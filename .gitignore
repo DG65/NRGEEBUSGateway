@@ -1,0 +1,4 @@
+# Interne Unterlagen (Prototyp, Befund mit Anlagendetails) bleiben lokal
+.prototyp/
+PROTOTYP-BEFUND.md
+.DS_Store

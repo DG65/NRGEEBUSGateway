@@ -1,0 +1,12 @@
+{
+  "id": "{1EA1FC14-0E05-4D19-8FEB-28E207100499}",
+  "author": "DG65",
+  "name": "NRG-Stack EEBUSGateway",
+  "url": "https://github.com/DG65/NRGEEBUSGateway",
+  "compatibility": {
+    "version": "9.0"
+  },
+  "version": "0.1.0",
+  "build": 1,
+  "date": 1793055600
+}

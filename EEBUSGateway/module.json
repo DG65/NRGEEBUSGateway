@@ -1,0 +1,21 @@
+{
+  "id": "{32809AEC-3A90-455F-8FE4-188DF37D594F}",
+  "name": "EEBUSGateway",
+  "type": 2,
+  "vendor": "",
+  "aliases": [
+    "NRG-Stack EEBUS-Gateway"
+  ],
+  "url": "https://github.com/DG65/NRGEEBUSGateway",
+  "parentRequirements": [
+    "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
+  ],
+  "childRequirements": [
+    "{12D8B8A8-3EE7-491F-A68A-D632304165D4}"
+  ],
+  "implemented": [
+    "{26D4DA14-6C0D-4686-AE00-D23234BAD90D}",
+    "{018EF6B5-AB94-40C6-AA53-46943E824ACF}"
+  ],
+  "prefix": "EEBGW"
+}
