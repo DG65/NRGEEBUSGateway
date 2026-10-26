@@ -56,6 +56,10 @@ function IPS_GetConfiguration(int $id): string { return json_encode($GLOBALS['IN
 function IPS_SetConfiguration(int $id, string $c): bool { $GLOBALS['INST'][$id]->config = array_merge($GLOBALS['INST'][$id]->config, json_decode($c, true)); return true; }
 function IPS_SetProperty(int $id, string $n, $v): bool { $GLOBALS['INST'][$id]->config[$n] = $v; return true; }
 function IPS_ApplyChanges(int $id): bool { $i = $GLOBALS['INST'][$id]; if (method_exists($i, 'anwenden')) { $i->anwenden(); } return true; }
+function IPS_CreateInstance(string $guid): int { $id = 20000 + count($GLOBALS['INST']); new FakeSocket($id); return $id; }
+function IPS_ConnectInstance(int $id, int $parent): bool { $GLOBALS['INST'][$id]->parentId = $parent; return true; }
+function IPS_DeleteInstance(int $id): bool { unset($GLOBALS['INST'][$id]); return true; }
+function IPS_SetName(int $id, string $n): bool { $GLOBALS['INST'][$id]->name = $n; return true; }
 function IPS_GetLibrary(string $guid): array { $l = json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true); return ['Version' => $l['version'], 'Build' => $l['build']]; }
 
 class IPSModule
@@ -228,6 +232,16 @@ $ev = $s->drainEvents();
 pruefe(($ev[0]['event'] ?? '') === 'heartbeat' && $ev[0]['state'] === 'lost', 'Heartbeat: Ausfall nach 120 s gemeldet (Ausfallgrenze greift im Kind)');
 $s->tick(1000 + 500);
 pruefe($s->drainEvents() === [], 'Heartbeat: Ausfall nur einmal gemeldet');
+
+// Ohne Elterninstanz: Client Socket selbst anlegen (RequireParent wirkt live nicht).
+$ohne = new EEBUSGateway(10100);
+$ohne->Create();
+$ohne->ApplyChanges();
+pruefe($ohne->timers['Verbindung'] === 15000, 'Ohne Client Socket: Prüf-Timer 15 s gestartet');
+$ohne->VerbindungPruefen();
+$neuSock = $ohne->parentId ? $GLOBALS['INST'][$ohne->parentId] : null;
+pruefe($neuSock instanceof FakeSocket && strpos($neuSock->name, 'EEBUS-Gateway Client Socket') === 0 && $ohne->timers['Verbindung'] === 0, 'Client Socket angelegt, verbunden, benannt; Timer aus');
+unset($GLOBALS['INST'][10100], $GLOBALS['INST'][$ohne->parentId]);
 
 // Modul anlegen
 $sock = new FakeSocket(10001);

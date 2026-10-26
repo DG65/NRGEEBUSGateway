@@ -66,6 +66,9 @@ class EEBUSGateway extends IPSModule
         $this->registerFormAttributes();
 
         $this->RegisterTimer('Takt', 0, 'EEBGW_Takt($_IPS[\'TARGET\']);');
+        // RequireParent legt den Client Socket nicht zuverlässig an (live 27.10.2026, wie RoboHub 0.4.2):
+        // fehlt er nach 15 s noch, legt das Gateway ihn selbst an (VerbindungPruefen).
+        $this->RegisterTimer('Verbindung', 0, 'EEBGW_VerbindungPruefen($_IPS[\'TARGET\']);');
         $this->RequireParent(self::CLIENT_SOCKET);
     }
 
@@ -81,6 +84,9 @@ class EEBUSGateway extends IPSModule
         $this->MaintainVariable('Zustand', 'Zustand', VARIABLETYPE_STRING, '', 2, true);
 
         $this->zertifikatSicherstellen();
+        if ($this->elternID() === 0) {
+            $this->SetTimerInterval('Verbindung', 15000);
+        }
         $this->elternBeobachten();
         $this->elternKonfigurieren();
         $this->SetTimerInterval('Takt', $this->ReadPropertyBoolean('Aktiv') ? self::TAKT_MS : 0);
@@ -209,6 +215,24 @@ class EEBUSGateway extends IPSModule
     // ------------------------------------------------------------------
     // Elterninstanz (Client Socket)
     // ------------------------------------------------------------------
+
+    /** Timer: fehlt der Client Socket noch, selbst anlegen und verbinden. */
+    public function VerbindungPruefen(): void
+    {
+        $this->SetTimerInterval('Verbindung', 0);
+        if ($this->elternID() !== 0) {
+            return;
+        }
+        $id = IPS_CreateInstance(self::CLIENT_SOCKET);
+        // Inzwischen doch verbunden (z. B. über die Konsole)? Dann den eigenen wieder entfernen.
+        if ($this->elternID() !== 0 || !IPS_ConnectInstance($this->InstanceID, $id)) {
+            IPS_DeleteInstance($id);
+            return;
+        }
+        IPS_SetName($id, 'EEBUS-Gateway Client Socket (' . IPS_GetName($this->InstanceID) . ')');
+        $this->LogMessage('Client Socket #' . $id . ' angelegt und verbunden.', KL_MESSAGE);
+        IPS_ApplyChanges($this->InstanceID);
+    }
 
     private function elternID(): int
     {

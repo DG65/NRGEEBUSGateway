@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (Build 2, 27.10.2026)
+
+- Fix (live gefunden): Symcons `RequireParent` legte den Client Socket beim Anlegen der Instanz nicht
+  an. Fehlt er nach 15 s noch, legt das Gateway ihn jetzt selbst an und verbindet ihn.
+- Erster Live-Test in Symcon 9.0 gegen eebus-go controlbox (TLS 1.2, nur CBC-SHA256): Prüfung der
+  Gegenstelle, Pinning und SHIP-Verbindung laufen.
+
 ## 0.1.0 (Build 1, 27.10.2026)
 
 - Erste Fassung: SHIP-Client über Symcons Client Socket (Client-Zertifikat, Pinning), WebSocket,
