@@ -243,6 +243,9 @@ $neuSock = $ohne->parentId ? $GLOBALS['INST'][$ohne->parentId] : null;
 pruefe($neuSock instanceof FakeSocket && strpos($neuSock->name, 'EEBUS-Gateway Client Socket') === 0 && $ohne->timers['Verbindung'] === 0, 'Client Socket angelegt, verbunden, benannt; Timer aus');
 unset($GLOBALS['INST'][10100], $GLOBALS['INST'][$ohne->parentId]);
 
+$wz = new ReflectionMethod(EEBUSGateway::class, 'wartezeit');
+pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [5, 10, 40, 300], 'Wiederverbindung: Wartezeit 5/10/40 s, höchstens 5 min');
+
 // Modul anlegen
 $sock = new FakeSocket(10001);
 $gw = new EEBUSGateway(10002);

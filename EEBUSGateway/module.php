@@ -429,12 +429,28 @@ class EEBUSGateway extends IPSModule
                 $this->LogMessage('Gegenstelle seit ' . ($jetzt - $s->letzteDaten) . ' s stumm — Verbindung wird neu aufgebaut.', KL_WARNING);
                 $neuVerbinden = true;
             }
+            if ($s->istVerbunden()) {
+                $this->SetBuffer('Versuche', '0');
+                $this->SetBuffer('NaechsterVersuch', '0');
+            }
             return $out;
         });
-        if ($neuVerbinden && $this->ReadPropertyBoolean('Aktiv')) {
+        // Wachsende Wartezeit zwischen Versuchen: Live gesehen (27.10.2026), dass eine Gegenstelle eine
+        // abgerissene Verbindung noch für aktiv hält und neue Versuche ablehnt — Anklopfen alle 5 s hilft
+        // dann nicht, sondern hält sie nur beschäftigt.
+        if ($neuVerbinden && $this->ReadPropertyBoolean('Aktiv') && time() >= (int)$this->GetBuffer('NaechsterVersuch')) {
+            $versuche = (int)$this->GetBuffer('Versuche') + 1;
+            $this->SetBuffer('Versuche', (string)$versuche);
+            $this->SetBuffer('NaechsterVersuch', (string)(time() + self::wartezeit($versuche)));
             $this->NeuVerbinden();
         }
         $this->statusAktualisieren();
+    }
+
+    /** Wartezeit vor dem nächsten Verbindungsversuch: 5, 10, 20, … s, höchstens 5 Minuten. */
+    private static function wartezeit(int $versuche): int
+    {
+        return (int)min(300, 5 * (2 ** min(max($versuche - 1, 0), 6)));
     }
 
     private function standSpeichern(EEBGWSession $s): void

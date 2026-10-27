@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 (Build 3, 27.10.2026)
+
+- Wiederverbindung mit wachsender Wartezeit (5 s, 10 s, 20 s … höchstens 5 Minuten) statt alle 5 s.
+  Live gesehen: Nach einem Verbindungsabriss hielt die Gegenstelle die alte Verbindung noch für
+  aktiv und lehnte neue Versuche ab.
+
 ## 0.1.1 (Build 2, 27.10.2026)
 
 - Fix (live gefunden): Symcons `RequireParent` legte den Client Socket beim Anlegen der Instanz nicht
