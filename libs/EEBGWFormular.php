@@ -19,6 +19,9 @@ trait EEBGWFormular
             '• Eigenes Zertifikat und SKI werden automatisch erzeugt; die Gegenstelle wird einmal geprüft und danach fest hinterlegt.',
             '• Fachmodule (z. B. SteuerboxHub) hängen sich als Kind-Instanzen an das Gateway und bekommen Grenzwerte und Heartbeat gemeldet.',
         ],
+        '0.1.3' => [
+            '• 🪟 Neu: Formular-Aufbau selbst wählen – im Bereich „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Stelle er steht.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';
@@ -168,12 +171,112 @@ trait EEBGWFormular
         ];
     }
 
+    /** Fachpanels in Standardreihenfolge, Schlüssel => Panel (liefert das Modul). */
+    abstract protected function eebgwFachpanels(): array;
+
+    /**
+     * Reihenfolge und Aufklapp-Zustand der Fachpanels aus „FormLayout“ (SUITE.md 3a, Vorbild Batteriewächter).
+     * Unbekannte oder fehlende Einträge fallen auf Standard und Standardposition zurück.
+     * Rückgabe: Schlüssel => ['open' => std|open|closed|hidden, 'pos' => int, 'idx' => int], sortiert.
+     */
+    protected function eebgwFormLayout(array $keys): array
+    {
+        $saved = json_decode((string)$this->ReadPropertyString('FormLayout'), true);
+        $by = [];
+        foreach (is_array($saved) ? $saved : [] as $row) {
+            if (is_array($row) && isset($row['Key'])) {
+                $by[(string)$row['Key']] = $row;
+            }
+        }
+        $out = [];
+        foreach (array_values($keys) as $i => $k) {
+            $r = $by[$k] ?? [];
+            // Vorrang bei Widerspruch: ausgeblendet vor zugeklappt vor aufgeklappt; kein Haken = Standard.
+            $open = !empty($r['Hidden']) ? 'hidden' : (!empty($r['Closed']) ? 'closed' : (!empty($r['Opened']) ? 'open' : 'std'));
+            $out[$k] = ['open' => $open, 'pos' => isset($r['Pos']) ? max(1, min(99, (int)$r['Pos'])) : $i + 1, 'idx' => $i];
+        }
+        uasort($out, function ($a, $b) {
+            return [$a['pos'], $a['idx']] <=> [$b['pos'], $b['idx']];
+        });
+        return $out;
+    }
+
+    private static function eebgwPanelName(array $panel, string $key): string
+    {
+        return trim((string)preg_replace('/\s*\(.*$/u', '', (string)($panel['caption'] ?? $key)));
+    }
+
+    protected function formLayoutPanel(array $layout, array $fach): array
+    {
+        $rows = [];
+        $hidden = [];
+        foreach ($layout as $key => $l) {
+            $name = self::eebgwPanelName($fach[$key], (string)$key);
+            $rows[] = ['Key' => (string)$key, 'Panel' => $name, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
+                'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
+            if ($l['open'] === 'hidden') {
+                $hidden[] = trim((string)preg_replace('/^[^\p{L}\p{N}]+/u', '', $name));
+            }
+        }
+        $hiddenLine = $hidden
+            ? [['type' => 'Label', 'caption' => '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.']]
+            : [];
+        return [
+            'type' => 'ExpansionPanel', 'expanded' => false,
+            'caption' => '🪟  Formular: Aufbau' . ($hidden ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'items' => array_merge($hiddenLine, [
+                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen des Formulars aufgeklappt sind und in welcher Reihenfolge sie stehen. Symcon merkt sich das Auf- und Zuklappen nicht selbst, deshalb gilt die Einstellung jedes Mal beim Öffnen – nach „Übernehmen“ ab dem nächsten Öffnen.'],
+                ['type' => 'Label', 'caption' => 'Kein Haken heißt „Standard“: wie das Modul es vorsieht (z. B. „Gegenstelle“ aufgeklappt, solange noch keine festgelegt ist). Bei gleicher Position bleibt die Standardreihenfolge. „Ausgeblendet“ nimmt einen Bereich nur aus der Anzeige, seine Einstellungen bleiben erhalten und wirken weiter. Sind mehrere Haken gesetzt, gilt „Ausgeblendet“ vor „Zugeklappt“ vor „Aufgeklappt“. Die Bereiche oben (Zweck, Neu, Dokumentation) und unten (Rückmeldungen, Über dieses Modul) bleiben fest.'],
+                [
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'loadValuesFromConfiguration' => false,
+                    'values' => $rows,
+                    'columns' => [
+                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
+                    ],
+                ],
+                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo EEBGW_ResetFormLayout($id);'],
+            ]),
+        ];
+    }
+
+    /** EEBGW_ResetFormLayout($id): string — Aufbau im offenen Formular auf Standard (gilt nach „Übernehmen“). */
+    public function ResetFormLayout(): string
+    {
+        $rows = [];
+        $i = 0;
+        foreach ($this->eebgwFachpanels() as $key => $panel) {
+            $rows[] = ['Key' => (string)$key, 'Panel' => self::eebgwPanelName($panel, (string)$key), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
+        }
+        $this->UpdateFormField('FormLayout', 'values', (string)json_encode($rows, JSON_UNESCAPED_UNICODE));
+        return 'ℹ️ Auf Standard gesetzt. Zum Speichern unten „Übernehmen“ klicken.';
+    }
+
     protected function eebgwBuildForm(array $fachpanels, array $actions, array $status): string
     {
+        $layout = $this->eebgwFormLayout(array_keys($fachpanels));
+        $mitte = [];
+        foreach ($layout as $key => $l) {
+            $panel = $fachpanels[$key];
+            if ($l['open'] === 'open') {
+                $panel['expanded'] = true;
+            } elseif ($l['open'] === 'closed') {
+                $panel['expanded'] = false;
+            } elseif ($l['open'] === 'hidden') {
+                // Nicht weglassen: Felder bleiben im Formular, gespeicherte Werte bleiben beim „Übernehmen“ erhalten.
+                $panel['visible'] = false;
+            }
+            $mitte[] = $panel;
+        }
         $elements = array_values(array_filter(array_merge(
             [$this->formPurposeIntro(), $this->formNewsBanner(), $this->formDocPanel()],
-            $fachpanels,
-            [$this->formForumHint(), $this->formLicenseHint()]
+            $mitte,
+            [$this->formLayoutPanel($layout, $fachpanels), $this->formForumHint(), $this->formLicenseHint()]
         )));
         return (string)json_encode(['elements' => $elements, 'actions' => $actions, 'status' => $status]);
     }

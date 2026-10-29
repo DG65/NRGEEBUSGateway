@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 (Build 4, 29.10.2026)
+
+- 🪟 Neu: „Formular: Aufbau“ (NRG-Stack-Konvention): je Bereich aufgeklappt, zugeklappt oder
+  ausgeblendet und Position wählbar; „Auf Standard zurücksetzen“ (`EEBGW_ResetFormLayout`).
+
 ## 0.1.2 (Build 3, 27.10.2026)
 
 - Wiederverbindung mit wachsender Wartezeit (5 s, 10 s, 20 s … höchstens 5 Minuten) statt alle 5 s.

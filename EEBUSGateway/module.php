@@ -50,6 +50,8 @@ class EEBUSGateway extends IPSModule
         // Optional: SKI der Gegenstelle laut Typenschild/App; dann wird ohne Rückfrage nur genau dieser akzeptiert.
         $this->RegisterPropertyString('ErwarteterSki', '');
         $this->RegisterPropertyBoolean('Aktiv', true);
+        // Formular: Aufbau (SUITE.md 3a): je Fachpanel Aufklapp-Zustand und Position.
+        $this->RegisterPropertyString('FormLayout', '[]');
 
         $this->RegisterAttributeString('Zertifikat', '');
         // Privater Schlüssel im Attribut, nicht in einer Property (NRG-Stack-Konvention Zugangsdaten).
@@ -675,6 +677,19 @@ class EEBUSGateway extends IPSModule
 
     public function GetConfigurationForm()
     {
+        $status = [
+            ['code' => 102, 'icon' => 'active', 'caption' => 'Aktiv'],
+            ['code' => 104, 'icon' => 'inactive', 'caption' => 'Gegenstelle eintragen und prüfen'],
+            ['code' => 201, 'icon' => 'error', 'caption' => 'SKI der Gegenstelle stimmt nicht mit dem eingetragenen überein'],
+            ['code' => 202, 'icon' => 'error', 'caption' => 'Gegenstelle seit über 5 Minuten nicht verbunden'],
+            ['code' => 203, 'icon' => 'inactive', 'caption' => 'Wartet auf Freigabe dieses Gateways in der Gegenstelle'],
+        ];
+        return $this->eebgwBuildForm($this->eebgwFachpanels(), [], $status);
+    }
+
+    /** Fachpanels in Standardreihenfolge, Schlüssel stabil (Formular: Aufbau, SUITE.md 3a). */
+    protected function eebgwFachpanels(): array
+    {
         $eigenerSki = $this->ReadAttributeString('EigenerSki');
         $gegenSki = $this->ReadAttributeString('GegenstelleSki');
         $info = json_decode($this->ReadAttributeString('GegenstelleInfo'), true) ?: [];
@@ -753,13 +768,6 @@ class EEBUSGateway extends IPSModule
             ]),
         ];
 
-        $status = [
-            ['code' => 102, 'icon' => 'active', 'caption' => 'Aktiv'],
-            ['code' => 104, 'icon' => 'inactive', 'caption' => 'Gegenstelle eintragen und prüfen'],
-            ['code' => 201, 'icon' => 'error', 'caption' => 'SKI der Gegenstelle stimmt nicht mit dem eingetragenen überein'],
-            ['code' => 202, 'icon' => 'error', 'caption' => 'Gegenstelle seit über 5 Minuten nicht verbunden'],
-            ['code' => 203, 'icon' => 'inactive', 'caption' => 'Wartet auf Freigabe dieses Gateways in der Gegenstelle'],
-        ];
-        return $this->eebgwBuildForm([$verbindung, $gateway, $zustand], [], $status);
+        return ['gegenstelle' => $verbindung, 'gateway' => $gateway, 'zustand' => $zustand];
     }
 }

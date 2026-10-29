@@ -271,6 +271,39 @@ $flach = json_encode($form, JSON_UNESCAPED_UNICODE);
 pruefe(strpos($flach, 'Wozu dieses Modul') !== false && strpos($flach, 'Über dieses Modul') !== false, 'Formular: Rahmen nach Konvention');
 pruefe(strpos($flach, EEBGWCert::lesbar($gw->attrs['EigenerSki'])) !== false, 'Formular: eigener SKI sichtbar');
 pruefe(strpos($flach, 'SteuerboxHub (Test)') !== false, 'Formular: angemeldetes Fachmodul sichtbar');
+// Formular: Aufbau (SUITE.md 3a)
+$captions = function (EEBUSGateway $gw) {
+    $f = json_decode($gw->GetConfigurationForm(), true);
+    $out = [];
+    foreach ($f['elements'] as $e) {
+        $out[] = [$e['caption'] ?? '', $e['expanded'] ?? null, $e['visible'] ?? true];
+    }
+    return $out;
+};
+$namen = array_map(function ($c) { return $c[0]; }, $captions($gw));
+$iG = array_search('🔌  Gegenstelle', $namen, true); $iA = array_search('🪟  Formular: Aufbau', $namen, true); $iF = array_search('💬  Rückmeldungen', $namen, true);
+pruefe($iG !== false && $iA > $iG && $iF > $iA, 'Aufbau: Panel nach den Fachpanels, vor dem Forum-Hinweis');
+$gw->props['FormLayout'] = json_encode([
+    ['Key' => 'zustand', 'Pos' => 1, 'Opened' => true],
+    ['Key' => 'gegenstelle', 'Pos' => 5, 'Closed' => true, 'Opened' => true],
+    ['Key' => 'gateway', 'Pos' => 2, 'Hidden' => true, 'Closed' => true],
+    ['Key' => 'gibtsnicht', 'Pos' => 1, 'Hidden' => true],
+]);
+$c = $captions($gw);
+$byName = []; foreach ($c as $i => $x) { $byName[$x[0]] = [$i, $x[1], $x[2]]; }
+pruefe($byName['📡  Zustand'][0] < $byName['🪪  Dieses Gateway'][0] && $byName['🪪  Dieses Gateway'][0] < $byName['🔌  Gegenstelle'][0], 'Aufbau: Reihenfolge nach Position');
+pruefe($byName['📡  Zustand'][1] === true && $byName['🔌  Gegenstelle'][1] === false, 'Aufbau: Aufgeklappt/Zugeklappt, Zugeklappt hat Vorrang');
+pruefe($byName['🪪  Dieses Gateway'][2] === false, 'Aufbau: Ausgeblendet = visible:false, Panel bleibt im Formular');
+pruefe(isset($byName['🪟  Formular: Aufbau (1 ausgeblendet)']), 'Aufbau: Caption nennt die Zahl ausgeblendeter Bereiche; unbekannter Schlüssel ignoriert');
+$gw->props['FormLayout'] = '[]';
+$gw->form = [];
+$antwort = $gw->ResetFormLayout();
+$werte = json_decode($gw->form['FormLayout']['values'] ?? '[]', true);
+pruefe(count($werte) === 3 && $werte[0]['Key'] === 'gegenstelle' && $werte[2]['Pos'] === 3 && !$werte[1]['Hidden'] && strpos($antwort, 'Übernehmen') !== false, 'Aufbau: Zurücksetzen per UpdateFormField, ohne Speichern');
+$gw->props['FormLayout'] = 'kaputt';
+$namen2 = array_map(function ($c) { return $c[0]; }, $captions($gw));
+pruefe(array_search('🔌  Gegenstelle', $namen2, true) < array_search('📡  Zustand', $namen2, true), 'Aufbau: ungültiger Inhalt fällt auf Standard zurück');
+$gw->props['FormLayout'] = '[]';
 pruefe(strpos(file_get_contents(dirname(__DIR__) . '/EEBUSGateway/module.php'), 'IPS_LogMessage') === false, 'Logging nur über $this->LogMessage (Store-Checkliste 15)');
 
 // ---------------------------------------------------------------------------
