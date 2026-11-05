@@ -12,6 +12,23 @@ declare(strict_types=1);
 // geprüft (27.10.2026).
 // ===========================================================================
 
+/**
+ * Fehler mit übersetzbarer Vorlage: englischer Quelltext (locale.json) plus Werte für %s.
+ * Das Modul übersetzt die Vorlage und setzt die Werte ein; getMessage() bleibt englisch.
+ */
+class EEBGWFehler extends RuntimeException
+{
+    public $vorlage;
+    public $werte;
+
+    public function __construct(string $vorlage, string ...$werte)
+    {
+        $this->vorlage = $vorlage;
+        $this->werte = $werte;
+        parent::__construct(vsprintf($vorlage, $werte));
+    }
+}
+
 final class EEBGWCert
 {
     /** Neues Schlüsselpaar + Zertifikat. Rückgabe ['cert' => PEM, 'key' => PEM, 'ski' => hex]. */
@@ -21,16 +38,16 @@ final class EEBGWCert
         try {
             $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1', 'config' => $cnf]);
             if ($key === false) {
-                throw new RuntimeException('Schlüssel konnte nicht erzeugt werden: ' . self::opensslFehler());
+                throw new EEBGWFehler('The key could not be created: %s', self::opensslFehler());
             }
             $csr = openssl_csr_new(['C' => 'DE', 'O' => 'NRG-Stack', 'OU' => 'EEBUSGateway', 'CN' => $name], $key, ['digest_alg' => 'sha256', 'config' => $cnf]);
             if ($csr === false) {
-                throw new RuntimeException('Zertifikatsanfrage fehlgeschlagen: ' . self::opensslFehler());
+                throw new EEBGWFehler('The certificate request failed: %s', self::opensslFehler());
             }
             // SHIP: Gültigkeit zehn Jahre wie eebus-go; Seriennummer zufällig.
             $crt = openssl_csr_sign($csr, null, $key, 3650, ['digest_alg' => 'sha256', 'config' => $cnf, 'x509_extensions' => 'ship'], random_int(1, PHP_INT_MAX));
             if ($crt === false) {
-                throw new RuntimeException('Zertifikat konnte nicht signiert werden: ' . self::opensslFehler());
+                throw new EEBGWFehler('The certificate could not be signed: %s', self::opensslFehler());
             }
             openssl_x509_export($crt, $crtPem);
             openssl_pkey_export($key, $keyPem, null, ['config' => $cnf]);
@@ -99,7 +116,7 @@ final class EEBGWCert
             $s = @stream_socket_client('tls://' . $host . ':' . $port, $en, $es, $timeout, STREAM_CLIENT_CONNECT, $ctx);
             if ($s === false) {
                 $openssl = self::opensslFehler();
-                throw new RuntimeException(trim('Keine TLS-Verbindung zu ' . $host . ':' . $port . ' (' . ($es ?: 'Fehler ' . $en) . ') ' . $openssl));
+                throw new EEBGWFehler('No TLS connection to %s (%s).', $host . ':' . $port, trim(($es ?: 'error ' . $en) . ' ' . $openssl));
             }
             $meta = stream_get_meta_data($s)['crypto'] ?? [];
             $peer = stream_context_get_params($s)['options']['ssl']['peer_certificate'] ?? null;
@@ -109,11 +126,11 @@ final class EEBGWCert
             @unlink($k);
         }
         if ($peer === null || !openssl_x509_export($peer, $pem)) {
-            throw new RuntimeException('Die Gegenstelle hat kein Zertifikat geliefert.');
+            throw new EEBGWFehler('The remote device did not present a certificate.');
         }
         $ski = self::skiAusZertifikat($pem);
         if ($ski === null) {
-            throw new RuntimeException('Das Zertifikat der Gegenstelle ist kein SHIP-Zertifikat (kein ECDSA P-256).');
+            throw new EEBGWFehler('The certificate of the remote device is not a SHIP certificate (no ECDSA P-256).');
         }
         return ['cert' => $pem, 'ski' => $ski, 'protokoll' => (string)($meta['protocol'] ?? ''), 'chiffre' => (string)($meta['cipher_name'] ?? '')];
     }

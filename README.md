@@ -1,17 +1,19 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.1.3-blue.svg)](library.json)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.0-blue.svg)](library.json)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Spenden-blue.svg)](https://paypal.me/DietmarGureth)
 
-Verbindet IP-Symcon über **EEBUS** (SHIP/SPINE) mit einem Gerät im Heimnetz, z. B. einer
+**Deutsch** · [English](README.en.md)
+
+Verbindet Symcon über **EEBUS** (SHIP/SPINE) mit einem Gerät im Heimnetz, z. B. einer
 Steuerbox des Netzbetreibers nach § 14a EnWG. Das Gateway hält Zertifikat und Kopplung und baut die
 verschlüsselte Verbindung auf. Was mit den Werten geschieht, entscheiden Fachmodule, die als
 Kind-Instanzen am Gateway hängen (zuerst **NRG-Stack SteuerboxHub**).
 
-> Stand 0.1.3: erste Fassung, geprüft gegen den Steuerbox-Simulator `controlbox` aus
+> Stand 0.2.0: frühe Fassung, geprüft gegen den Steuerbox-Simulator `controlbox` aus
 > [eebus-go](https://github.com/enbility/eebus-go). Mit echter Steuerbox noch nicht getestet.
 
 ## Einrichtung
@@ -33,6 +35,7 @@ Kind-Instanzen am Gateway hängen (zuerst **NRG-Stack SteuerboxHub**).
   Kind-Instanzen, Abos, Bindungen, Heartbeat (eigener und Überwachung der Gegenstelle).
 - Wiederverbindung bei Stille oder hängendem Aufbau.
 - Variablen „Verbunden“ und „Zustand“; `EEBGW_GetState()` liefert den Zustand als JSON.
+- Zweisprachig (Deutsch/Englisch), folgt der Sprache der Symcon-Konsole.
 
 ## Grenzen dieser Fassung
 
@@ -55,6 +58,7 @@ gegen eebus-go controlbox.
 | `EEBGW_GegenstelleUebernehmen(int $id)` | Text: zuletzt geprüften SKI festlegen |
 | `EEBGW_NeuVerbinden(int $id)` | Text: Verbindung neu aufbauen |
 | `EEBGW_ZertifikatErneuern(int $id)` | Text: neues eigenes Zertifikat (neuer SKI!) |
+| `EEBGW_ResetFormLayout(int $id)` | Text: „Formular: Aufbau“ im offenen Formular auf Standard |
 | `EEBGW_GetState(int $id)` | JSON: Verbindungszustand (`contractVersion` 1.0) |
 
 ## Danksagung

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 (Build 5, 05.11.2026)
+
+- 🌍 Neu: zweisprachig Deutsch/Englisch (Formular, Meldungen, Variablennamen, Einträge im Meldungsprotokoll); folgt der Sprache
+  der Symcon-Konsole. Englische Anleitung `README.en.md`. Kennungen (Idents, Funktions-, Property- und
+  Attributnamen, Kind-Schnittstelle) unverändert.
+
 ## 0.1.3 (Build 4, 29.10.2026)
 
 - 🪟 Neu: „Formular: Aufbau“ (NRG-Stack-Konvention): je Bereich aufgeklappt, zugeklappt oder

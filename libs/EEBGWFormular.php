@@ -15,12 +15,15 @@ trait EEBGWFormular
     // „Was ist neu": Schlüssel = Version ohne Beta-/Build-Suffix.
     private static $EEBGW_NEWS_VERSIONS = [
         '0.1.0' => [
-            '• Erste Fassung: Das Gateway verbindet Symcon über EEBUS (SHIP/SPINE) mit einem Gerät im Heimnetz, z. B. einer Steuerbox nach § 14a EnWG.',
-            '• Eigenes Zertifikat und SKI werden automatisch erzeugt; die Gegenstelle wird einmal geprüft und danach fest hinterlegt.',
-            '• Fachmodule (z. B. SteuerboxHub) hängen sich als Kind-Instanzen an das Gateway und bekommen Grenzwerte und Heartbeat gemeldet.',
+            '• First version: the gateway connects Symcon via EEBUS (SHIP/SPINE) to a device in the home network, e.g. a control box under § 14a EnWG.',
+            '• Its own certificate and SKI are created automatically; the remote device is checked once and then pinned.',
+            '• Application modules (e.g. SteuerboxHub) attach as child instances to the gateway and receive limits and the heartbeat state.',
         ],
         '0.1.3' => [
-            '• 🪟 Neu: Formular-Aufbau selbst wählen – im Bereich „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Stelle er steht.',
+            '• 🪟 New: choose the form layout yourself – in “Form: layout” you decide for each section whether it is expanded, collapsed or hidden when the form opens, and where it appears.',
+        ],
+        '0.2.0' => [
+            '• 🌍 New: the module is bilingual (German/English) and follows the language of the Symcon console.',
         ],
     ];
 
@@ -29,6 +32,26 @@ trait EEBGWFormular
     private static $EEBGW_LICENSE_URL  = 'https://github.com/DG65/NRGEEBUSGateway/blob/main/LICENSE';
     private static $EEBGW_PAYPAL_URL   = 'https://paypal.me/DietmarGureth';
     private static $EEBGW_LIBRARY_GUID = '{1EA1FC14-0E05-4D19-8FEB-28E207100499}';
+
+    /** @var array Übersetzungen dieses Aufrufs (Stolperstein 24: jeden Text nur einmal übersetzen). */
+    private $eebgwUebersetzt = [];
+
+    /**
+     * Englischen Quelltext in die Sprache der Konsole übersetzen (locale.json), Platzhalter %s wie sprintf.
+     * Jeder Text wird je Aufruf nur einmal an Symcon gegeben.
+     */
+    protected function t(string $text, string ...$werte): string
+    {
+        if (!isset($this->eebgwUebersetzt[$text])) {
+            $this->eebgwUebersetzt[$text] = (string)$this->Translate($text);
+        }
+        $aus = $this->eebgwUebersetzt[$text];
+        if ($werte === []) {
+            return $aus;
+        }
+        $mit = @vsprintf($aus, $werte);
+        return $mit === false ? $aus : $mit;
+    }
 
     protected function registerFormAttributes(): void
     {
@@ -80,11 +103,11 @@ trait EEBGWFormular
         }
         return [
             'type' => 'ExpansionPanel', 'name' => 'PurposeIntroPanel', 'expanded' => true,
-            'caption' => '👋  Wozu dieses Modul?',
+            'caption' => '👋  What is this module for?',
             'items' => [
-                ['type' => 'Label', 'caption' => 'Das EEBUS-Gateway stellt die verschlüsselte EEBUS-Verbindung (SHIP/SPINE) zu einem Gerät im Heimnetz her, z. B. zu einer Steuerbox des Netzbetreibers nach § 14a EnWG.'],
-                ['type' => 'Label', 'caption' => 'Es kümmert sich nur um die Verbindung: Zertifikat, Kopplung, Verbindungsaufbau, Heartbeat. Was mit den Werten geschieht, entscheiden die Fachmodule, die als Kind-Instanzen am Gateway hängen (z. B. NRG-Stack SteuerboxHub für die Leistungsbegrenzung).'],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'EEBGW_AckPurposeIntro($id);'],
+                ['type' => 'Label', 'caption' => 'The EEBUS gateway establishes the encrypted EEBUS connection (SHIP/SPINE) to a device in the home network, e.g. to a grid operator\'s control box under § 14a EnWG.'],
+                ['type' => 'Label', 'caption' => 'It only takes care of the connection: certificate, pairing, connection setup, heartbeat. What happens with the values is decided by the application modules attached as child instances (e.g. NRG-Stack SteuerboxHub for the power limitation).'],
+                ['type' => 'Button', 'caption' => 'Got it – don\'t show again', 'onClick' => 'EEBGW_AckPurposeIntro($id);'],
             ],
         ];
     }
@@ -104,16 +127,16 @@ trait EEBGWFormular
         uksort($pending, 'version_compare');
         $items = [];
         foreach ($pending as $version => $lines) {
-            $items[] = ['type' => 'Label', 'caption' => 'Version ' . $version . ':'];
+            $items[] = ['type' => 'Label', 'caption' => $this->t('Version %s:', (string)$version)];
             foreach ($lines as $line) {
-                $items[] = ['type' => 'Label', 'caption' => $line];
+                $items[] = ['type' => 'Label', 'caption' => $this->t($line)];
             }
         }
-        $items[] = ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'EEBGW_AckNews($id);'];
+        $items[] = ['type' => 'Button', 'caption' => 'Got it – don\'t show again', 'onClick' => 'EEBGW_AckNews($id);'];
         $keys = array_keys($pending);
         return [
             'type' => 'ExpansionPanel', 'name' => 'NewsPanel', 'expanded' => true,
-            'caption' => '🆕  Neu bis Version ' . end($keys),
+            'caption' => $this->t('🆕  New up to version %s', (string)end($keys)),
             'items' => $items,
         ];
     }
@@ -122,17 +145,17 @@ trait EEBGWFormular
     {
         $lib = $this->eebgwLibrary();
         $ver = isset($lib['Version'])
-            ? 'ℹ️ EEBUS-Gateway Version ' . $lib['Version'] . ' (Build ' . ($lib['Build'] ?? '?') . ')'
-            : 'ℹ️ EEBUS-Gateway';
+            ? 'ℹ️ ' . $this->t('EEBUS gateway version %s (build %s)', (string)$lib['Version'], (string)($lib['Build'] ?? '?'))
+            : 'ℹ️ ' . $this->t('EEBUS gateway');
         return [
             'type' => 'ExpansionPanel', 'expanded' => false,
-            'caption' => '📖  Dokumentation & Hilfe',
+            'caption' => '📖  Documentation & help',
             'items' => [
                 ['type' => 'Label', 'caption' => $ver],
-                ['type' => 'Label', 'caption' => 'Einrichtung in drei Schritten: 1. Adresse und Port der Gegenstelle eintragen (stehen in deren Anleitung oder App). 2. „Gegenstelle prüfen“ klicken – das Gateway holt das Zertifikat ab und zeigt den SKI. Stimmt er mit dem SKI der Gegenstelle überein, „Übernehmen“. 3. Den SKI dieses Gateways in der Gegenstelle freigeben (App, Weboberfläche oder beim Netzbetreiber).'],
-                ['type' => 'Label', 'caption' => 'Der SKI ist der Fingerabdruck eines EEBUS-Geräts. Beide Seiten müssen den SKI der jeweils anderen kennen, erst dann kommt eine Verbindung zustande.'],
-                ['type' => 'Label', 'caption' => 'Das Gateway verbindet sich als Client zur Gegenstelle. Geräte, die ausschließlich selbst eine Verbindung aufbauen wollen, werden in dieser Fassung noch nicht unterstützt.'],
-                ['type' => 'Button', 'caption' => 'Anleitung auf GitHub', 'onClick' => "echo '" . self::$EEBGW_REPO_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => 'Setup in three steps: 1. Enter address and port of the remote device (see its manual or app). 2. Click “Check remote device” – the gateway fetches the certificate and shows the SKI. If it matches the SKI of the remote device, trust it. 3. Trust the SKI of this gateway in the remote device (app, web interface or with the grid operator).'],
+                ['type' => 'Label', 'caption' => 'The SKI is the fingerprint of an EEBUS device. Each side must know the other side\'s SKI; only then can a connection be established.'],
+                ['type' => 'Label', 'caption' => 'The gateway connects to the remote device as a client. Devices that can only open the connection themselves are not yet supported in this version.'],
+                ['type' => 'Button', 'caption' => 'Manual on GitHub', 'onClick' => "echo '" . self::$EEBGW_REPO_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -145,11 +168,11 @@ trait EEBGWFormular
         // Forum-Thread folgt mit der ersten Veröffentlichung; bis dahin GitHub.
         return [
             'type' => 'ExpansionPanel', 'name' => 'ForumHintPanel', 'expanded' => true,
-            'caption' => '💬  Rückmeldungen',
+            'caption' => '💬  Feedback',
             'items' => [
-                ['type' => 'Label', 'caption' => '🧪 Das EEBUS-Gateway ist neu. Mit welchem Gerät hast du es verbunden, und hat es geklappt? Rückmeldungen mit Hersteller und Modell helfen sehr.'],
-                ['type' => 'Button', 'caption' => 'Fehler auf GitHub melden', 'onClick' => "echo '" . self::$EEBGW_ISSUES_URL . "';", 'link' => true],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'EEBGW_AckForumHint($id);'],
+                ['type' => 'Label', 'caption' => '🧪 The EEBUS gateway is new. Which device did you connect it to, and did it work? Feedback with manufacturer and model helps a lot.'],
+                ['type' => 'Button', 'caption' => 'Report a problem on GitHub', 'onClick' => "echo '" . self::$EEBGW_ISSUES_URL . "';", 'link' => true],
+                ['type' => 'Button', 'caption' => 'Got it – don\'t show again', 'onClick' => 'EEBGW_AckForumHint($id);'],
             ],
         ];
     }
@@ -159,14 +182,14 @@ trait EEBGWFormular
     {
         return [
             'type' => 'ExpansionPanel', 'expanded' => false,
-            'caption' => '🧡  Über dieses Modul',
+            'caption' => '🧡  About this module',
             'items' => [
-                ['type' => 'Label', 'caption' => 'Entstanden aus echter Begeisterung für die eigene Anlage — und ein paar durchgetippten Abenden. Trotzdem: Software-Hobby hin oder her, das hier ist geistiges Eigentum und echte Arbeit steckt drin.'],
-                ['type' => 'Label', 'caption' => 'Lizenz: PolyForm Noncommercial 1.0.0 — privat und nicht-kommerziell frei nutzbar, für den gewerblichen Einsatz braucht es eine gesonderte Lizenz vom Rechteinhaber.'],
-                ['type' => 'Button', 'caption' => 'Lizenztext ansehen', 'onClick' => "echo '" . self::$EEBGW_LICENSE_URL . "';", 'link' => true],
-                ['type' => 'Label', 'caption' => 'Gewerbliche Nutzung oder Fragen zur Lizenz? Einfach melden: dietmar@gureth.eu'],
-                ['type' => 'Label', 'caption' => 'Gefällt dir das Modul und du möchtest trotzdem etwas dalassen? Über eine kleine Spende freue ich mich — völlig freiwillig, keine Gegenleistung nötig.'],
-                ['type' => 'Button', 'caption' => '☕  Spenden via PayPal', 'onClick' => "echo '" . self::$EEBGW_PAYPAL_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => 'Born out of real enthusiasm for my own setup — and quite a few evenings of typing. Still: hobby software or not, this is intellectual property and real work went into it.'],
+                ['type' => 'Label', 'caption' => 'License: PolyForm Noncommercial 1.0.0 — free for private and non-commercial use; commercial use requires a separate license from the rights holder.'],
+                ['type' => 'Button', 'caption' => 'View license text', 'onClick' => "echo '" . self::$EEBGW_LICENSE_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => 'Commercial use or questions about the license? Just get in touch: dietmar@gureth.eu'],
+                ['type' => 'Label', 'caption' => 'You like the module and would like to leave something anyway? I am happy about a small donation — completely voluntary, nothing required in return.'],
+                ['type' => 'Button', 'caption' => '☕  Donate via PayPal', 'onClick' => "echo '" . self::$EEBGW_PAYPAL_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -212,35 +235,35 @@ trait EEBGWFormular
         $hidden = [];
         foreach ($layout as $key => $l) {
             $name = self::eebgwPanelName($fach[$key], (string)$key);
-            $rows[] = ['Key' => (string)$key, 'Panel' => $name, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
+            $rows[] = ['Key' => (string)$key, 'Panel' => $this->t($name), 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
                 'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
             if ($l['open'] === 'hidden') {
-                $hidden[] = trim((string)preg_replace('/^[^\p{L}\p{N}]+/u', '', $name));
+                $hidden[] = trim((string)preg_replace('/^[^\p{L}\p{N}]+/u', '', $this->t($name)));
             }
         }
         $hiddenLine = $hidden
-            ? [['type' => 'Label', 'caption' => '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.']]
+            ? [['type' => 'Label', 'caption' => $this->t('🙈 Hidden: %s — to show again, clear the “Hidden” checkbox. Hidden sections keep working, only the display is missing.', implode(', ', $hidden))]]
             : [];
         return [
             'type' => 'ExpansionPanel', 'expanded' => false,
-            'caption' => '🪟  Formular: Aufbau' . ($hidden ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'caption' => $this->t('🪟  Form: layout') . ($hidden ? $this->t(' (%s hidden)', (string)count($hidden)) : ''),
             'items' => array_merge($hiddenLine, [
-                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen des Formulars aufgeklappt sind und in welcher Reihenfolge sie stehen. Symcon merkt sich das Auf- und Zuklappen nicht selbst, deshalb gilt die Einstellung jedes Mal beim Öffnen – nach „Übernehmen“ ab dem nächsten Öffnen.'],
-                ['type' => 'Label', 'caption' => 'Kein Haken heißt „Standard“: wie das Modul es vorsieht (z. B. „Gegenstelle“ aufgeklappt, solange noch keine festgelegt ist). Bei gleicher Position bleibt die Standardreihenfolge. „Ausgeblendet“ nimmt einen Bereich nur aus der Anzeige, seine Einstellungen bleiben erhalten und wirken weiter. Sind mehrere Haken gesetzt, gilt „Ausgeblendet“ vor „Zugeklappt“ vor „Aufgeklappt“. Die Bereiche oben (Zweck, Neu, Dokumentation) und unten (Rückmeldungen, Über dieses Modul) bleiben fest.'],
+                ['type' => 'Label', 'caption' => 'Here you decide which sections are expanded when the form opens and in which order they appear. Symcon does not remember expanding and collapsing, so this setting applies every time the form opens – after “Apply”, from the next opening on.'],
+                ['type' => 'Label', 'caption' => 'No checkbox means “default”: as the module intends (e.g. “Remote device” expanded as long as none is set). With equal positions the default order applies. “Hidden” only removes a section from the display; its settings are kept and stay in effect. If several boxes are ticked, “Hidden” wins over “Collapsed” over “Expanded”. The sections at the top (purpose, news, documentation) and at the bottom (feedback, about this module) stay fixed.'],
                 [
-                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Sections', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false,
                     'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
-                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
-                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Section', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => 'Key', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => 'Expanded', 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Collapsed', 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => '🙈 Hidden', 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
                         ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
                     ],
                 ],
-                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo EEBGW_ResetFormLayout($id);'],
+                ['type' => 'Button', 'caption' => '↩️ Reset to default', 'onClick' => 'echo EEBGW_ResetFormLayout($id);'],
             ]),
         ];
     }
@@ -251,10 +274,10 @@ trait EEBGWFormular
         $rows = [];
         $i = 0;
         foreach ($this->eebgwFachpanels() as $key => $panel) {
-            $rows[] = ['Key' => (string)$key, 'Panel' => self::eebgwPanelName($panel, (string)$key), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
+            $rows[] = ['Key' => (string)$key, 'Panel' => $this->t(self::eebgwPanelName($panel, (string)$key)), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
         }
         $this->UpdateFormField('FormLayout', 'values', (string)json_encode($rows, JSON_UNESCAPED_UNICODE));
-        return 'ℹ️ Auf Standard gesetzt. Zum Speichern unten „Übernehmen“ klicken.';
+        return 'ℹ️ ' . $this->t('Set to default. Click “Apply” below to save.');
     }
 
     protected function eebgwBuildForm(array $fachpanels, array $actions, array $status): string

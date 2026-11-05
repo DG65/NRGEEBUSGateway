@@ -1,0 +1,170 @@
+<?php
+/**
+ * locale-de.php — deutsche Fassung aller Quelltexte (Referenzsprache).
+ * Erzeugt EEBUSGateway/locale.json:  php .tools/locale-de.php
+ */
+
+declare(strict_types=1);
+
+$de = [
+    // Variablen
+    'Connected' => 'Verbunden',
+    'State' => 'Zustand',
+
+    // Zertifikat und Gegenstelle
+    'The certificate could not be created: %s' => 'Das Zertifikat konnte nicht erzeugt werden: %s',
+    'New EEBUS certificate created, SKI %s' => 'Neues EEBUS-Zertifikat erzeugt, SKI %s',
+    'Please enter address and port of the remote device first and click “Apply”.' => 'Bitte zuerst Adresse und Port der Gegenstelle eintragen und „Übernehmen“ klicken.',
+    'Checking the remote device failed: %s' => 'Prüfung der Gegenstelle fehlgeschlagen: %s',
+    'SKI of the remote device does not match: expected %s, found %s' => 'SKI der Gegenstelle stimmt nicht: erwartet %s, gefunden %s',
+    'The SKI of the remote device does NOT match the one entered.' => 'Der SKI der Gegenstelle stimmt NICHT mit dem eingetragenen überein.',
+    'Entered: %s' => 'Eingetragen: %s',
+    'Found: %s' => 'Gefunden: %s',
+    'Please check address and SKI. Nothing was applied.' => 'Bitte Adresse und SKI prüfen. Es wurde nichts übernommen.',
+    'Remote device confirmed and applied (SKI %s, %s).' => 'Gegenstelle bestätigt und übernommen (SKI %s, %s).',
+    'Now trust the SKI of this gateway in the remote device: %s' => 'Jetzt den SKI dieses Gateways in der Gegenstelle freigeben: %s',
+    'SKI found: %s' => 'Gefundener SKI: %s',
+    'Remote device reached (%s).' => 'Gegenstelle erreicht (%s).',
+    'Its SKI is: %s' => 'Ihr SKI lautet: %s',
+    'Compare it with the SKI the device itself shows (app, web interface, type plate). If it matches, click “Trust this SKI” in the form.' => 'Vergleiche ihn mit dem SKI, den das Gerät selbst anzeigt (App, Weboberfläche, Typenschild). Stimmt er, im Formular „Diesen SKI übernehmen“ klicken.',
+    'There is no checked certificate yet. Please click “Check remote device” first.' => 'Es liegt kein geprüftes Zertifikat vor. Bitte zuerst „Gegenstelle prüfen“ klicken.',
+    'Remote device applied (SKI %s). The gateway is connecting now.' => 'Gegenstelle übernommen (SKI %s). Das Gateway verbindet sich jetzt.',
+    'Trust the SKI of this gateway in the remote device: %s' => 'Gib in der Gegenstelle den SKI dieses Gateways frei: %s',
+    'Remote device set, SKI %s' => 'Gegenstelle festgelegt, SKI %s',
+    'New certificate created. New SKI: %s' => 'Neues Zertifikat erzeugt. Neuer SKI: %s',
+    'Important: trust this SKI in the remote device again, the old one is no longer valid.' => 'Wichtig: Diesen SKI in der Gegenstelle neu freigeben, der alte gilt nicht mehr.',
+    'The key could not be created: %s' => 'Der Schlüssel konnte nicht erzeugt werden: %s',
+    'The certificate request failed: %s' => 'Die Zertifikatsanfrage ist fehlgeschlagen: %s',
+    'The certificate could not be signed: %s' => 'Das Zertifikat konnte nicht signiert werden: %s',
+    'No TLS connection to %s (%s).' => 'Keine TLS-Verbindung zu %s (%s).',
+    'The remote device did not present a certificate.' => 'Die Gegenstelle hat kein Zertifikat geliefert.',
+    'The certificate of the remote device is not a SHIP certificate (no ECDSA P-256).' => 'Das Zertifikat der Gegenstelle ist kein SHIP-Zertifikat (kein ECDSA P-256).',
+
+    // Client Socket und Verbindung
+    'EEBUS gateway client socket (%s)' => 'EEBUS-Gateway Client Socket (%s)',
+    'Client socket #%s created and connected.' => 'Client Socket #%s angelegt und verbunden.',
+    'No client socket connected.' => 'Kein Client Socket verbunden.',
+    'The remote device has not been checked yet. Please click “Check remote device” first.' => 'Die Gegenstelle ist noch nicht geprüft. Bitte zuerst „Gegenstelle prüfen“ klicken.',
+    'The connection is being re-established. The state appears under “State” in a few seconds.' => 'Die Verbindung wird neu aufgebaut. Der Zustand erscheint in wenigen Sekunden unter „Zustand“.',
+    'Error in the EEBUS session: %s' => 'Fehler in der EEBUS-Sitzung: %s',
+    'Sending to the client socket failed: %s' => 'Senden an den Client Socket fehlgeschlagen: %s',
+    'Remote device silent for %s s — re-establishing the connection.' => 'Gegenstelle seit %s s stumm — Verbindung wird neu aufgebaut.',
+    'Connected to %s' => 'Verbunden mit %s',
+    'remote device' => 'Gegenstelle',
+    '(heartbeat missing)' => '(Heartbeat ausgeblieben)',
+    'Waiting to be trusted by the remote device' => 'Wartet auf Freigabe in der Gegenstelle',
+    'Connecting (SHIP)' => 'Verbindungsaufbau (SHIP)',
+    'Error: %s' => 'Fehler: %s',
+    'Disconnected by the remote device' => 'Von der Gegenstelle getrennt',
+    'Remote device not checked yet' => 'Gegenstelle noch nicht geprüft',
+    'Not connected' => 'Nicht verbunden',
+    'Child instance #%s (%s) registered: %s' => 'Kind-Instanz #%s (%s) angemeldet: %s',
+    'EEBUS connection established (remote device %s).' => 'EEBUS-Verbindung steht (Gegenstelle %s).',
+    'EEBUS connection closed.' => 'EEBUS-Verbindung getrennt.',
+    'Write command from the remote device for %s, instance #%s: %s' => 'Schreibbefehl der Gegenstelle für %s, Instanz #%s: %s',
+    'Heartbeat of the remote device is missing.' => 'Heartbeat der Gegenstelle ausgeblieben.',
+    'The remote device is waiting for this gateway to be trusted (SKI %s).' => 'Die Gegenstelle wartet auf die Freigabe dieses Gateways (SKI %s).',
+    'Forwarding to child instances failed: %s' => 'Weitergabe an Kind-Instanzen fehlgeschlagen: %s',
+
+    // SHIP-Fehler (Zustand)
+    'Invalid HTTP response from the remote device.' => 'Ungültige HTTP-Antwort der Gegenstelle.',
+    'WebSocket upgrade refused: %s' => 'WebSocket-Upgrade abgelehnt: %s',
+    'WebSocket upgrade: wrong Sec-WebSocket-Accept.' => 'WebSocket-Upgrade: falscher Sec-WebSocket-Accept.',
+    'The remote device does not confirm the subprotocol "ship".' => 'Die Gegenstelle bestätigt das Unterprotokoll „ship“ nicht.',
+    'The remote device aborted the connection setup (gateway not trusted there?).' => 'Die Gegenstelle hat den Verbindungsaufbau abgebrochen (Gateway dort nicht freigegeben?).',
+    'The remote device selected an unsupported SHIP protocol.' => 'Die Gegenstelle wählt ein nicht unterstütztes SHIP-Protokoll.',
+    'The remote device requires a PIN (%s); the gateway does not support this yet.' => 'Die Gegenstelle verlangt eine PIN (%s); das unterstützt das Gateway noch nicht.',
+    'SHIP protocol error reported by the remote device: %s' => 'SHIP-Protokollfehler der Gegenstelle: %s',
+
+    // Statuscodes
+    'Active' => 'Aktiv',
+    'Enter and check the remote device' => 'Gegenstelle eintragen und prüfen',
+    'SKI of the remote device does not match the one entered' => 'SKI der Gegenstelle stimmt nicht mit dem eingetragenen überein',
+    'Remote device not connected for more than 5 minutes' => 'Gegenstelle seit über 5 Minuten nicht verbunden',
+    'Waiting for this gateway to be trusted by the remote device' => 'Wartet auf Freigabe dieses Gateways in der Gegenstelle',
+
+    // Formular: Gegenstelle
+    'Remote device set: SKI %s' => 'Gegenstelle festgelegt: SKI %s',
+    'checked on %s' => 'geprüft am %s',
+    'Y-m-d H:i' => 'd.m.Y H:i',
+    'Y-m-d H:i:s' => 'd.m.Y H:i:s',
+    'No remote device set yet. Enter address and port, click “Apply”, then “Check remote device”.' => 'Noch keine Gegenstelle festgelegt. Adresse und Port eintragen, „Übernehmen“, dann „Gegenstelle prüfen“.',
+    '🔌  Remote device' => '🔌  Gegenstelle',
+    'Address of the remote device (IP or host name)' => 'Adresse der Gegenstelle (IP oder Hostname)',
+    'Port (e.g. 4712, see the device manual)' => 'Port (z. B. 4712, steht in der Anleitung des Geräts)',
+    'SKI of the remote device (optional, from app or type plate)' => 'SKI der Gegenstelle (optional, aus App oder Typenschild)',
+    'If an SKI is entered, the gateway accepts only this exact device. Leave it empty to compare the SKI yourself after the check.' => 'Ist der SKI eingetragen, akzeptiert das Gateway nur genau dieses Gerät. Leer lassen, um den SKI nach der Prüfung selbst zu vergleichen.',
+    'Check remote device' => 'Gegenstelle prüfen',
+    'Confirm the device found' => 'Gefundenes Gerät bestätigen',
+    'Only trust it if this SKI matches the one the device itself shows.' => 'Nur übernehmen, wenn dieser SKI mit dem übereinstimmt, den das Gerät selbst anzeigt.',
+    'Trust this SKI' => 'Diesen SKI übernehmen',
+    'Connection enabled' => 'Verbindung aktiv',
+
+    // Formular: Dieses Gateway
+    '🪪  This gateway' => '🪪  Dieses Gateway',
+    'SKI of this gateway (trust it in the remote device)' => 'SKI dieses Gateways (in der Gegenstelle freigeben)',
+    'Enter or confirm this SKI in the remote device (app, web interface or with the grid operator, depending on the device).' => 'Diesen SKI trägst du in der Gegenstelle ein bzw. bestätigst ihn dort (App, Weboberfläche oder beim Netzbetreiber, je nach Gerät).',
+    'Create a new certificate' => 'Neues Zertifikat erzeugen',
+    '⚠️ Afterwards the gateway has a new SKI. The remote device has to trust it again; until then there is no connection.' => '⚠️ Danach hat das Gateway einen neuen SKI. Die Gegenstelle muss ihn neu freigeben, bis dahin besteht keine Verbindung.',
+    'Create new certificate' => 'Neues Zertifikat erzeugen',
+    'Really create a new certificate? The remote device has to trust the new SKI again.' => 'Wirklich ein neues Zertifikat erzeugen? Die Gegenstelle muss den neuen SKI erneut freigeben.',
+
+    // Formular: Zustand
+    'entity %s' => 'Entität %s',
+    'ℹ️ No application module registered yet. Without one the gateway establishes the connection but offers no use cases.' => 'ℹ️ Noch kein Fachmodul angemeldet. Ohne Fachmodul baut das Gateway die Verbindung auf, bietet aber keine Anwendungsfälle an.',
+    '📡  State' => '📡  Zustand',
+    'Use cases of the remote device: %s' => 'Anwendungsfälle der Gegenstelle: %s',
+    'Last heartbeat of the remote device: %s' => 'Letzter Heartbeat der Gegenstelle: %s',
+    'Registered application modules:' => 'Angemeldete Fachmodule:',
+    'Reconnect' => 'Neu verbinden',
+
+    // Formular-Rahmen
+    '• First version: the gateway connects Symcon via EEBUS (SHIP/SPINE) to a device in the home network, e.g. a control box under § 14a EnWG.' => '• Erste Fassung: Das Gateway verbindet Symcon über EEBUS (SHIP/SPINE) mit einem Gerät im Heimnetz, z. B. einer Steuerbox nach § 14a EnWG.',
+    '• Its own certificate and SKI are created automatically; the remote device is checked once and then pinned.' => '• Eigenes Zertifikat und SKI werden automatisch erzeugt; die Gegenstelle wird einmal geprüft und danach fest hinterlegt.',
+    '• Application modules (e.g. SteuerboxHub) attach as child instances to the gateway and receive limits and the heartbeat state.' => '• Fachmodule (z. B. SteuerboxHub) hängen sich als Kind-Instanzen an das Gateway und bekommen Grenzwerte und Heartbeat gemeldet.',
+    '• 🪟 New: choose the form layout yourself – in “Form: layout” you decide for each section whether it is expanded, collapsed or hidden when the form opens, and where it appears.' => '• 🪟 Neu: Formular-Aufbau selbst wählen – im Bereich „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Stelle er steht.',
+    '• 🌍 New: the module is bilingual (German/English) and follows the language of the Symcon console.' => '• 🌍 Neu: Das Modul ist zweisprachig (Deutsch/Englisch) und folgt der Sprache der Symcon-Konsole.',
+    '👋  What is this module for?' => '👋  Wozu dieses Modul?',
+    'The EEBUS gateway establishes the encrypted EEBUS connection (SHIP/SPINE) to a device in the home network, e.g. to a grid operator\'s control box under § 14a EnWG.' => 'Das EEBUS-Gateway stellt die verschlüsselte EEBUS-Verbindung (SHIP/SPINE) zu einem Gerät im Heimnetz her, z. B. zu einer Steuerbox des Netzbetreibers nach § 14a EnWG.',
+    'It only takes care of the connection: certificate, pairing, connection setup, heartbeat. What happens with the values is decided by the application modules attached as child instances (e.g. NRG-Stack SteuerboxHub for the power limitation).' => 'Es kümmert sich nur um die Verbindung: Zertifikat, Kopplung, Verbindungsaufbau, Heartbeat. Was mit den Werten geschieht, entscheiden die Fachmodule, die als Kind-Instanzen am Gateway hängen (z. B. NRG-Stack SteuerboxHub für die Leistungsbegrenzung).',
+    'Got it – don\'t show again' => 'Verstanden – nicht mehr anzeigen',
+    'Version %s:' => 'Version %s:',
+    '🆕  New up to version %s' => '🆕  Neu bis Version %s',
+    'EEBUS gateway version %s (build %s)' => 'EEBUS-Gateway Version %s (Build %s)',
+    'EEBUS gateway' => 'EEBUS-Gateway',
+    '📖  Documentation & help' => '📖  Dokumentation & Hilfe',
+    'Setup in three steps: 1. Enter address and port of the remote device (see its manual or app). 2. Click “Check remote device” – the gateway fetches the certificate and shows the SKI. If it matches the SKI of the remote device, trust it. 3. Trust the SKI of this gateway in the remote device (app, web interface or with the grid operator).' => 'Einrichtung in drei Schritten: 1. Adresse und Port der Gegenstelle eintragen (stehen in deren Anleitung oder App). 2. „Gegenstelle prüfen“ klicken – das Gateway holt das Zertifikat ab und zeigt den SKI. Stimmt er mit dem SKI der Gegenstelle überein, übernehmen. 3. Den SKI dieses Gateways in der Gegenstelle freigeben (App, Weboberfläche oder beim Netzbetreiber).',
+    'The SKI is the fingerprint of an EEBUS device. Each side must know the other side\'s SKI; only then can a connection be established.' => 'Der SKI ist der Fingerabdruck eines EEBUS-Geräts. Beide Seiten müssen den SKI der jeweils anderen kennen, erst dann kommt eine Verbindung zustande.',
+    'The gateway connects to the remote device as a client. Devices that can only open the connection themselves are not yet supported in this version.' => 'Das Gateway verbindet sich als Client zur Gegenstelle. Geräte, die ausschließlich selbst eine Verbindung aufbauen wollen, werden in dieser Fassung noch nicht unterstützt.',
+    'Manual on GitHub' => 'Anleitung auf GitHub',
+    '💬  Feedback' => '💬  Rückmeldungen',
+    '🧪 The EEBUS gateway is new. Which device did you connect it to, and did it work? Feedback with manufacturer and model helps a lot.' => '🧪 Das EEBUS-Gateway ist neu. Mit welchem Gerät hast du es verbunden, und hat es geklappt? Rückmeldungen mit Hersteller und Modell helfen sehr.',
+    'Report a problem on GitHub' => 'Fehler auf GitHub melden',
+    '🧡  About this module' => '🧡  Über dieses Modul',
+    'Born out of real enthusiasm for my own setup — and quite a few evenings of typing. Still: hobby software or not, this is intellectual property and real work went into it.' => 'Entstanden aus echter Begeisterung für die eigene Anlage — und ein paar durchgetippten Abenden. Trotzdem: Software-Hobby hin oder her, das hier ist geistiges Eigentum und echte Arbeit steckt drin.',
+    'License: PolyForm Noncommercial 1.0.0 — free for private and non-commercial use; commercial use requires a separate license from the rights holder.' => 'Lizenz: PolyForm Noncommercial 1.0.0 — privat und nicht-kommerziell frei nutzbar, für den gewerblichen Einsatz braucht es eine gesonderte Lizenz vom Rechteinhaber.',
+    'View license text' => 'Lizenztext ansehen',
+    'Commercial use or questions about the license? Just get in touch: dietmar@gureth.eu' => 'Gewerbliche Nutzung oder Fragen zur Lizenz? Einfach melden: dietmar@gureth.eu',
+    'You like the module and would like to leave something anyway? I am happy about a small donation — completely voluntary, nothing required in return.' => 'Gefällt dir das Modul und du möchtest trotzdem etwas dalassen? Über eine kleine Spende freue ich mich — völlig freiwillig, keine Gegenleistung nötig.',
+    '☕  Donate via PayPal' => '☕  Spenden via PayPal',
+
+    // Formular: Aufbau
+    '🙈 Hidden: %s — to show again, clear the “Hidden” checkbox. Hidden sections keep working, only the display is missing.' => '🙈 Ausgeblendet: %s — zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.',
+    '🪟  Form: layout' => '🪟  Formular: Aufbau',
+    ' (%s hidden)' => ' (%s ausgeblendet)',
+    'Here you decide which sections are expanded when the form opens and in which order they appear. Symcon does not remember expanding and collapsing, so this setting applies every time the form opens – after “Apply”, from the next opening on.' => 'Hier legst du fest, welche Bereiche beim Öffnen des Formulars aufgeklappt sind und in welcher Reihenfolge sie stehen. Symcon merkt sich das Auf- und Zuklappen nicht selbst, deshalb gilt die Einstellung jedes Mal beim Öffnen – nach „Übernehmen“ ab dem nächsten Öffnen.',
+    'No checkbox means “default”: as the module intends (e.g. “Remote device” expanded as long as none is set). With equal positions the default order applies. “Hidden” only removes a section from the display; its settings are kept and stay in effect. If several boxes are ticked, “Hidden” wins over “Collapsed” over “Expanded”. The sections at the top (purpose, news, documentation) and at the bottom (feedback, about this module) stay fixed.' => 'Kein Haken heißt „Standard“: wie das Modul es vorsieht (z. B. „Gegenstelle“ aufgeklappt, solange noch keine festgelegt ist). Bei gleicher Position bleibt die Standardreihenfolge. „Ausgeblendet“ nimmt einen Bereich nur aus der Anzeige, seine Einstellungen bleiben erhalten und wirken weiter. Sind mehrere Haken gesetzt, gilt „Ausgeblendet“ vor „Zugeklappt“ vor „Aufgeklappt“. Die Bereiche oben (Zweck, Neu, Dokumentation) und unten (Rückmeldungen, Über dieses Modul) bleiben fest.',
+    'Sections' => 'Bereiche',
+    'Section' => 'Bereich',
+    'Key' => 'Schlüssel',
+    'Expanded' => 'Aufgeklappt',
+    'Collapsed' => 'Zugeklappt',
+    '🙈 Hidden' => '🙈 Ausgeblendet',
+    'Position' => 'Position',
+    '↩️ Reset to default' => '↩️ Auf Standard zurücksetzen',
+    'Set to default. Click “Apply” below to save.' => 'Auf Standard gesetzt. Zum Speichern unten „Übernehmen“ klicken.',
+];
+
+$ziel = dirname(__DIR__) . '/EEBUSGateway/locale.json';
+file_put_contents($ziel, json_encode(['translations' => ['de' => $de]], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n");
+echo count($de) . " Einträge geschrieben\n";

@@ -82,8 +82,8 @@ class EEBUSGateway extends IPSModule
             $this->RegisterMessage(0, IPS_KERNELMESSAGE);
             return;
         }
-        $this->MaintainVariable('Verbunden', 'Verbunden', VARIABLETYPE_BOOLEAN, '', 1, true);
-        $this->MaintainVariable('Zustand', 'Zustand', VARIABLETYPE_STRING, '', 2, true);
+        $this->MaintainVariable('Verbunden', $this->t('Connected'), VARIABLETYPE_BOOLEAN, '', 1, true);
+        $this->MaintainVariable('Zustand', $this->t('State'), VARIABLETYPE_STRING, '', 2, true);
 
         $this->zertifikatSicherstellen();
         if ($this->elternID() === 0) {
@@ -108,7 +108,7 @@ class EEBUSGateway extends IPSModule
                 $this->sitzungStarten();
             } else {
                 $this->mitSitzung(function (EEBGWSession $s) {
-                    $s->getrennt('Client Socket nicht mehr aktiv');
+                    $s->getrennt('client socket no longer active');
                     return '';
                 });
             }
@@ -127,13 +127,13 @@ class EEBUSGateway extends IPSModule
         try {
             $neu = EEBGWCert::erzeugen('NRG-Stack-EEBUSGateway-' . $this->InstanceID);
         } catch (Throwable $e) {
-            $this->LogMessage('Zertifikat konnte nicht erzeugt werden: ' . $e->getMessage(), KL_ERROR);
+            $this->LogMessage($this->t('The certificate could not be created: %s', $this->fehlerText($e)), KL_ERROR);
             return;
         }
         $this->WriteAttributeString('Zertifikat', $neu['cert']);
         $this->WriteAttributeString('Schluessel', $neu['key']);
         $this->WriteAttributeString('EigenerSki', $neu['ski']);
-        $this->LogMessage('Neues EEBUS-Zertifikat erzeugt, SKI ' . EEBGWCert::lesbar($neu['ski']), KL_MESSAGE);
+        $this->LogMessage($this->t('New EEBUS certificate created, SKI %s', EEBGWCert::lesbar($neu['ski'])), KL_MESSAGE);
     }
 
     /**
@@ -146,33 +146,33 @@ class EEBUSGateway extends IPSModule
         $host = trim((string)$this->ReadPropertyString('Host'));
         $port = (int)$this->ReadPropertyInteger('Port');
         if ($host === '' || $port <= 0) {
-            return '⛔ Bitte zuerst Adresse und Port der Gegenstelle eintragen und „Übernehmen“ klicken.';
+            return '⛔ ' . $this->t('Please enter address and port of the remote device first and click “Apply”.');
         }
         $this->zertifikatSicherstellen();
         try {
             $g = EEBGWCert::gegenstelleAbholen($host, $port, $this->ReadAttributeString('Zertifikat'), $this->ReadAttributeString('Schluessel'));
         } catch (Throwable $e) {
-            $this->LogMessage('Prüfung der Gegenstelle fehlgeschlagen: ' . $e->getMessage(), KL_WARNING);
-            return '⛔ ' . $e->getMessage();
+            $this->LogMessage($this->t('Checking the remote device failed: %s', $this->fehlerText($e)), KL_WARNING);
+            return '⛔ ' . $this->fehlerText($e);
         }
         $erwartet = EEBGWCert::normalisieren((string)$this->ReadPropertyString('ErwarteterSki'));
         $tls = $g['protokoll'] . ', ' . $g['chiffre'];
         if ($erwartet !== '') {
             if ($erwartet !== $g['ski']) {
-                $this->LogMessage('SKI der Gegenstelle stimmt nicht: erwartet ' . $erwartet . ', gefunden ' . $g['ski'], KL_WARNING);
-                return '⛔ Der SKI der Gegenstelle stimmt NICHT mit dem eingetragenen überein.' . "\n"
-                    . 'Eingetragen: ' . EEBGWCert::lesbar($erwartet) . "\n" . 'Gefunden: ' . EEBGWCert::lesbar($g['ski']) . "\n"
-                    . 'Bitte Adresse und SKI prüfen. Es wurde nichts übernommen.';
+                $this->LogMessage($this->t('SKI of the remote device does not match: expected %s, found %s', $erwartet, (string)$g['ski']), KL_WARNING);
+                return '⛔ ' . $this->t('The SKI of the remote device does NOT match the one entered.') . "\n"
+                    . $this->t('Entered: %s', EEBGWCert::lesbar($erwartet)) . "\n" . $this->t('Found: %s', EEBGWCert::lesbar($g['ski'])) . "\n"
+                    . $this->t('Please check address and SKI. Nothing was applied.');
             }
             $this->gegenstelleFestlegen($g);
-            return '✅ Gegenstelle bestätigt und übernommen (SKI ' . EEBGWCert::lesbar($g['ski']) . ', ' . $tls . ').' . "\n"
-                . 'Jetzt den SKI dieses Gateways in der Gegenstelle freigeben: ' . EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki'));
+            return '✅ ' . $this->t('Remote device confirmed and applied (SKI %s, %s).', EEBGWCert::lesbar($g['ski']), $tls) . "\n"
+                . $this->t('Now trust the SKI of this gateway in the remote device: %s', EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki')));
         }
         $this->WriteAttributeString('Kandidat', (string)json_encode($g));
         $this->UpdateFormField('KandidatPanel', 'visible', true);
-        $this->UpdateFormField('KandidatZeile', 'caption', 'Gefundener SKI: ' . EEBGWCert::lesbar($g['ski']));
-        return 'ℹ️ Gegenstelle erreicht (' . $tls . ').' . "\n" . 'Ihr SKI lautet: ' . EEBGWCert::lesbar($g['ski']) . "\n"
-            . 'Vergleiche ihn mit dem SKI, den das Gerät selbst anzeigt (App, Weboberfläche, Typenschild). Stimmt er, im Formular „Diesen SKI übernehmen“ klicken.';
+        $this->UpdateFormField('KandidatZeile', 'caption', $this->t('SKI found: %s', EEBGWCert::lesbar($g['ski'])));
+        return 'ℹ️ ' . $this->t('Remote device reached (%s).', $tls) . "\n" . $this->t('Its SKI is: %s', EEBGWCert::lesbar($g['ski'])) . "\n"
+            . $this->t('Compare it with the SKI the device itself shows (app, web interface, type plate). If it matches, click “Trust this SKI” in the form.');
     }
 
     /** EEBGW_GegenstelleUebernehmen($id): string — den zuletzt geprüften SKI festlegen. */
@@ -180,12 +180,12 @@ class EEBUSGateway extends IPSModule
     {
         $g = json_decode($this->ReadAttributeString('Kandidat'), true);
         if (!is_array($g) || empty($g['cert'])) {
-            return '⛔ Es liegt kein geprüftes Zertifikat vor. Bitte zuerst „Gegenstelle prüfen“.';
+            return '⛔ ' . $this->t('There is no checked certificate yet. Please click “Check remote device” first.');
         }
         $this->gegenstelleFestlegen($g);
         $this->UpdateFormField('KandidatPanel', 'visible', false);
-        return '✅ Gegenstelle übernommen (SKI ' . EEBGWCert::lesbar($g['ski']) . '). Das Gateway verbindet sich jetzt.' . "\n"
-            . 'Gib in der Gegenstelle den SKI dieses Gateways frei: ' . EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki'));
+        return '✅ ' . $this->t('Remote device applied (SKI %s). The gateway is connecting now.', EEBGWCert::lesbar($g['ski'])) . "\n"
+            . $this->t('Trust the SKI of this gateway in the remote device: %s', EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki')));
     }
 
     private function gegenstelleFestlegen(array $g): void
@@ -194,7 +194,7 @@ class EEBUSGateway extends IPSModule
         $this->WriteAttributeString('GegenstelleSki', (string)$g['ski']);
         $this->WriteAttributeString('GegenstelleInfo', (string)json_encode(['geprueft' => time(), 'protokoll' => $g['protokoll'] ?? '', 'chiffre' => $g['chiffre'] ?? '']));
         $this->WriteAttributeString('Kandidat', '{}');
-        $this->LogMessage('Gegenstelle festgelegt, SKI ' . EEBGWCert::lesbar((string)$g['ski']), KL_MESSAGE);
+        $this->LogMessage($this->t('Remote device set, SKI %s', EEBGWCert::lesbar((string)$g['ski'])), KL_MESSAGE);
         $this->elternKonfigurieren();
         $this->statusAktualisieren();
     }
@@ -211,7 +211,7 @@ class EEBUSGateway extends IPSModule
         $this->elternKonfigurieren();
         $ski = EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki'));
         $this->UpdateFormField('EigenerSkiFeld', 'value', $ski);
-        return '✅ Neues Zertifikat erzeugt. Neuer SKI: ' . $ski . "\n" . 'Wichtig: Diesen SKI in der Gegenstelle neu freigeben, der alte gilt nicht mehr.';
+        return '✅ ' . $this->t('New certificate created. New SKI: %s', $ski) . "\n" . $this->t('Important: trust this SKI in the remote device again, the old one is no longer valid.');
     }
 
     // ------------------------------------------------------------------
@@ -231,9 +231,15 @@ class EEBUSGateway extends IPSModule
             IPS_DeleteInstance($id);
             return;
         }
-        IPS_SetName($id, 'EEBUS-Gateway Client Socket (' . IPS_GetName($this->InstanceID) . ')');
-        $this->LogMessage('Client Socket #' . $id . ' angelegt und verbunden.', KL_MESSAGE);
+        IPS_SetName($id, $this->t('EEBUS gateway client socket (%s)', IPS_GetName($this->InstanceID)));
+        $this->LogMessage($this->t('Client socket #%s created and connected.', (string)$id), KL_MESSAGE);
         IPS_ApplyChanges($this->InstanceID);
+    }
+
+    /** Fehlertext in der Sprache der Konsole (EEBGWFehler trägt eine übersetzbare Vorlage). */
+    private function fehlerText(Throwable $e): string
+    {
+        return $e instanceof EEBGWFehler ? $this->t($e->vorlage, ...$e->werte) : $e->getMessage();
     }
 
     private function elternID(): int
@@ -300,15 +306,15 @@ class EEBUSGateway extends IPSModule
     {
         $eltern = $this->elternID();
         if ($eltern === 0) {
-            return '⛔ Kein Client Socket verbunden.';
+            return '⛔ ' . $this->t('No client socket connected.');
         }
         if ($this->ReadAttributeString('GegenstelleZertifikat') === '') {
-            return '⛔ Die Gegenstelle ist noch nicht geprüft. Bitte zuerst „Gegenstelle prüfen“.';
+            return '⛔ ' . $this->t('The remote device has not been checked yet. Please click “Check remote device” first.');
         }
         IPS_SetProperty($eltern, 'Open', false);
         IPS_ApplyChanges($eltern);
         $this->elternKonfigurieren();
-        return '✅ Verbindung wird neu aufgebaut. Der Zustand erscheint in wenigen Sekunden unter „Zustand“.';
+        return '✅ ' . $this->t('The connection is being re-established. The state appears under “State” in a few seconds.');
     }
 
     // ------------------------------------------------------------------
@@ -340,7 +346,7 @@ class EEBUSGateway extends IPSModule
     {
         $sem = 'EEBGW_' . $this->InstanceID;
         if (!IPS_SemaphoreEnter($sem, 5000)) {
-            $this->SendDebug('Sitzung', 'Semaphore belegt, Aufruf verworfen', 0);
+            $this->SendDebug('Session', 'semaphore busy, call dropped', 0);
             return null;
         }
         $events = [];
@@ -364,7 +370,7 @@ class EEBUSGateway extends IPSModule
             $this->standSpeichern($s);
             $rueckgabe = is_array($ergebnis) ? ($ergebnis['rueckgabe'] ?? null) : null;
         } catch (Throwable $e) {
-            $this->LogMessage('Fehler in der EEBUS-Sitzung: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')', KL_ERROR);
+            $this->LogMessage($this->t('Error in the EEBUS session: %s', $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')'), KL_ERROR);
         } finally {
             IPS_SemaphoreLeave($sem);
         }
@@ -391,7 +397,7 @@ class EEBUSGateway extends IPSModule
             // Symcons Datenfluss trägt Bytes als UTF-8-kodiertes Latin-1 (Verbund-Muster RoboHub/Fernwirk101).
             $this->SendDataToParent((string)json_encode(['DataID' => self::DATA_ZUM_IO, 'Buffer' => mb_convert_encoding($bytes, 'UTF-8', 'ISO-8859-1')]));
         } catch (Throwable $e) {
-            $this->LogMessage('Senden an den Client Socket fehlgeschlagen: ' . $e->getMessage(), KL_WARNING);
+            $this->LogMessage($this->t('Sending to the client socket failed: %s', $e->getMessage()), KL_WARNING);
         }
     }
 
@@ -428,7 +434,7 @@ class EEBUSGateway extends IPSModule
                 && $jetzt - (int)($stand['phaseSeit'] ?? $jetzt) > self::AUFBAU_FRIST_S) {
                 $neuVerbinden = true;
             } elseif ($s->istVerbunden() && $s->letzteDaten > 0 && $jetzt - $s->letzteDaten > self::STILLE_FRIST_S) {
-                $this->LogMessage('Gegenstelle seit ' . ($jetzt - $s->letzteDaten) . ' s stumm — Verbindung wird neu aufgebaut.', KL_WARNING);
+                $this->LogMessage($this->t('Remote device silent for %s s — re-establishing the connection.', (string)($jetzt - $s->letzteDaten)), KL_WARNING);
                 $neuVerbinden = true;
             }
             if ($s->istVerbunden()) {
@@ -462,6 +468,8 @@ class EEBUSGateway extends IPSModule
             'phase' => $s->phase,
             'phaseSeit' => ($alt['phase'] ?? '') === $s->phase ? (int)($alt['phaseSeit'] ?? time()) : time(),
             'fehler' => $s->fehler,
+            'fehlerVorlage' => $s->fehlerVorlage,
+            'fehlerWerte' => $s->fehlerWerte,
             'vertrauenAusstehend' => $s->vertrauenAusstehend,
             'remoteShipId' => $s->remoteShipId,
             'remoteDevice' => $s->remoteDevice,
@@ -488,21 +496,21 @@ class EEBUSGateway extends IPSModule
     {
         switch ($st['phase'] ?? 'idle') {
             case 'data':
-                return 'Verbunden mit ' . ($st['remoteShipId'] ?: 'Gegenstelle') . ($st['heartbeatVerloren'] ? ' (Heartbeat ausgeblieben)' : '');
+                return $this->t('Connected to %s', (string)($st['remoteShipId'] ?: $this->t('remote device'))) . ($st['heartbeatVerloren'] ? ' ' . $this->t('(heartbeat missing)') : '');
             case 'hello':
-                return !empty($st['vertrauenAusstehend']) ? 'Wartet auf Freigabe in der Gegenstelle' : 'Verbindungsaufbau (SHIP)';
+                return !empty($st['vertrauenAusstehend']) ? $this->t('Waiting to be trusted by the remote device') : $this->t('Connecting (SHIP)');
             case 'http':
             case 'cmi':
             case 'prot':
             case 'pin':
             case 'access':
-                return 'Verbindungsaufbau (SHIP)';
+                return $this->t('Connecting (SHIP)');
             case 'error':
-                return 'Fehler: ' . ($st['fehler'] ?? '');
+                return $this->t('Error: %s', !empty($st['fehlerVorlage']) ? $this->t((string)$st['fehlerVorlage'], ...array_map('strval', (array)($st['fehlerWerte'] ?? []))) : (string)($st['fehler'] ?? ''));
             case 'closed':
-                return 'Von der Gegenstelle getrennt';
+                return $this->t('Disconnected by the remote device');
         }
-        return $this->ReadAttributeString('GegenstelleZertifikat') === '' ? 'Gegenstelle noch nicht geprüft' : 'Nicht verbunden';
+        return $this->ReadAttributeString('GegenstelleZertifikat') === '' ? $this->t('Remote device not checked yet') : $this->t('Not connected');
     }
 
     private function statusAktualisieren(): void
@@ -565,7 +573,7 @@ class EEBUSGateway extends IPSModule
     private function kindAnmelden(int $kind, array $entity): array
     {
         if ($kind <= 0 || !IPS_InstanceExists($kind)) {
-            return ['ok' => false, 'error' => 'Sender fehlt oder unbekannt'];
+            return ['ok' => false, 'error' => 'sender missing or unknown'];
         }
         $anm = json_decode($this->ReadAttributeString('Anmeldungen'), true) ?: [];
         $alt = $anm[(string)$kind] ?? null;
@@ -573,7 +581,7 @@ class EEBUSGateway extends IPSModule
         $anm = $this->anmeldungenBereinigen($anm);
         if ($alt != $entity) {
             $this->WriteAttributeString('Anmeldungen', (string)json_encode($anm));
-            $this->LogMessage('Kind-Instanz #' . $kind . ' (' . IPS_GetName($kind) . ') angemeldet: ' . ($entity['type'] ?? '?'), KL_MESSAGE);
+            $this->LogMessage($this->t('Child instance #%s (%s) registered: %s', (string)$kind, IPS_GetName($kind), (string)($entity['type'] ?? '?')), KL_MESSAGE);
             // Neues Gerätemodell: die Gegenstelle muss es neu erfragen, also Verbindung neu aufbauen.
             $st = json_decode($this->ReadAttributeString('Stand'), true) ?: [];
             if (($st['phase'] ?? '') === 'data') {
@@ -589,7 +597,7 @@ class EEBUSGateway extends IPSModule
                     }, $e['features'])];
             }
         }
-        return ['ok' => false, 'error' => 'Anmeldung nicht übernommen'];
+        return ['ok' => false, 'error' => 'registration not applied'];
     }
 
     private function kindAbmelden(int $kind): void
@@ -616,17 +624,17 @@ class EEBUSGateway extends IPSModule
     private function kindDaten(int $kind, string $featureTyp, string $funktion, array $daten): array
     {
         if ($funktion === '' || $featureTyp === '') {
-            return ['ok' => false, 'error' => 'Feature und Function sind Pflicht'];
+            return ['ok' => false, 'error' => 'Feature and Function are required'];
         }
         $r = $this->mitSitzung(function (EEBGWSession $s) use ($kind, $featureTyp, $funktion, $daten) {
             $entity = $s->entityOf($kind);
             $index = $entity === null ? null : $s->featureIndex($entity, $featureTyp, 'server');
             if ($index === null) {
-                return ['out' => '', 'rueckgabe' => ['ok' => false, 'error' => 'Feature ' . $featureTyp . ' ist für diese Instanz nicht angemeldet']];
+                return ['out' => '', 'rueckgabe' => ['ok' => false, 'error' => 'feature ' . $featureTyp . ' is not registered for this instance']];
             }
             return ['out' => $s->datenSetzen($entity, $index, $funktion, $daten), 'rueckgabe' => ['ok' => true]];
         });
-        return is_array($r) ? $r : ['ok' => false, 'error' => 'Gateway beschäftigt'];
+        return is_array($r) ? $r : ['ok' => false, 'error' => 'gateway busy'];
     }
 
     private function ereignisVerteilen(array $e): void
@@ -634,21 +642,21 @@ class EEBUSGateway extends IPSModule
         $art = (string)($e['event'] ?? '');
         if ($art === 'connection') {
             $this->LogMessage($e['state'] === 'connected'
-                ? 'EEBUS-Verbindung steht (Gegenstelle ' . ($e['shipId'] ?? '?') . ').'
-                : 'EEBUS-Verbindung getrennt.', $e['state'] === 'connected' ? KL_MESSAGE : KL_WARNING);
+                ? $this->t('EEBUS connection established (remote device %s).', (string)($e['shipId'] ?? '?'))
+                : $this->t('EEBUS connection closed.'), $e['state'] === 'connected' ? KL_MESSAGE : KL_WARNING);
         } elseif ($art === 'write') {
-            $this->LogMessage('Schreibbefehl der Gegenstelle für ' . $e['feature'] . '/' . $e['function'] . ' an Instanz #' . $e['owner'] . ': ' . json_encode($e['changes']), KL_MESSAGE);
+            $this->LogMessage($this->t('Write command from the remote device for %s, instance #%s: %s', $e['feature'] . '/' . $e['function'], (string)$e['owner'], (string)json_encode($e['changes'])), KL_MESSAGE);
         } elseif ($art === 'heartbeat' && $e['state'] === 'lost') {
-            $this->LogMessage('Heartbeat der Gegenstelle ausgeblieben.', KL_WARNING);
+            $this->LogMessage($this->t('Heartbeat of the remote device is missing.'), KL_WARNING);
         } elseif ($art === 'trust') {
-            $this->LogMessage('Gegenstelle wartet auf Freigabe dieses Gateways (SKI ' . EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki')) . ').', KL_NOTIFY);
+            $this->LogMessage($this->t('The remote device is waiting for this gateway to be trusted (SKI %s).', EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki'))), KL_NOTIFY);
         }
         $paket = ['DataID' => self::DATA_ZUM_KIND, 'Target' => (int)($e['owner'] ?? 0), 'Event' => $art] + $e;
         unset($paket['event']);
         try {
             $this->SendDataToChildren((string)json_encode($paket));
         } catch (Throwable $ex) {
-            $this->LogMessage('Weitergabe an Kind-Instanzen fehlgeschlagen: ' . $ex->getMessage(), KL_WARNING);
+            $this->LogMessage($this->t('Forwarding to child instances failed: %s', $ex->getMessage()), KL_WARNING);
         }
     }
 
@@ -678,11 +686,11 @@ class EEBUSGateway extends IPSModule
     public function GetConfigurationForm()
     {
         $status = [
-            ['code' => 102, 'icon' => 'active', 'caption' => 'Aktiv'],
-            ['code' => 104, 'icon' => 'inactive', 'caption' => 'Gegenstelle eintragen und prüfen'],
-            ['code' => 201, 'icon' => 'error', 'caption' => 'SKI der Gegenstelle stimmt nicht mit dem eingetragenen überein'],
-            ['code' => 202, 'icon' => 'error', 'caption' => 'Gegenstelle seit über 5 Minuten nicht verbunden'],
-            ['code' => 203, 'icon' => 'inactive', 'caption' => 'Wartet auf Freigabe dieses Gateways in der Gegenstelle'],
+            ['code' => 102, 'icon' => 'active', 'caption' => 'Active'],
+            ['code' => 104, 'icon' => 'inactive', 'caption' => 'Enter and check the remote device'],
+            ['code' => 201, 'icon' => 'error', 'caption' => 'SKI of the remote device does not match the one entered'],
+            ['code' => 202, 'icon' => 'error', 'caption' => 'Remote device not connected for more than 5 minutes'],
+            ['code' => 203, 'icon' => 'inactive', 'caption' => 'Waiting for this gateway to be trusted by the remote device'],
         ];
         return $this->eebgwBuildForm($this->eebgwFachpanels(), [], $status);
     }
@@ -697,45 +705,45 @@ class EEBUSGateway extends IPSModule
         $st = json_decode($this->ReadAttributeString('Stand'), true) ?: [];
 
         if ($gegenSki !== '') {
-            $gegenZeile = '✅ Gegenstelle festgelegt: SKI ' . EEBGWCert::lesbar($gegenSki)
-                . (isset($info['geprueft']) ? ', geprüft am ' . date('d.m.Y H:i', (int)$info['geprueft']) : '')
+            $gegenZeile = '✅ ' . $this->t('Remote device set: SKI %s', EEBGWCert::lesbar($gegenSki))
+                . (isset($info['geprueft']) ? ', ' . $this->t('checked on %s', date($this->t('Y-m-d H:i'), (int)$info['geprueft'])) : '')
                 . (!empty($info['chiffre']) ? ' (' . $info['protokoll'] . ', ' . $info['chiffre'] . ')' : '');
         } else {
-            $gegenZeile = 'ℹ️ Noch keine Gegenstelle festgelegt. Adresse und Port eintragen, „Übernehmen“, dann „Gegenstelle prüfen“.';
+            $gegenZeile = 'ℹ️ ' . $this->t('No remote device set yet. Enter address and port, click “Apply”, then “Check remote device”.');
         }
 
         $verbindung = [
-            'type' => 'ExpansionPanel', 'expanded' => $gegenSki === '', 'caption' => '🔌  Gegenstelle',
+            'type' => 'ExpansionPanel', 'expanded' => $gegenSki === '', 'caption' => '🔌  Remote device',
             'items' => [
-                ['type' => 'ValidationTextBox', 'name' => 'Host', 'caption' => 'Adresse der Gegenstelle (IP oder Hostname)', 'width' => '420px'],
-                ['type' => 'NumberSpinner', 'name' => 'Port', 'caption' => 'Port (z. B. 4712, steht in der Anleitung des Geräts)', 'minimum' => 0, 'maximum' => 65535, 'width' => '420px'],
-                ['type' => 'ValidationTextBox', 'name' => 'ErwarteterSki', 'caption' => 'SKI der Gegenstelle (optional, aus App oder Typenschild)', 'width' => '420px'],
-                ['type' => 'Label', 'caption' => 'Ist der SKI eingetragen, akzeptiert das Gateway nur genau dieses Gerät. Leer lassen, um den SKI nach der Prüfung selbst zu vergleichen.'],
-                ['type' => 'Button', 'caption' => 'Gegenstelle prüfen', 'onClick' => 'echo EEBGW_GegenstellePruefen($id);'],
+                ['type' => 'ValidationTextBox', 'name' => 'Host', 'caption' => 'Address of the remote device (IP or host name)', 'width' => '420px'],
+                ['type' => 'NumberSpinner', 'name' => 'Port', 'caption' => 'Port (e.g. 4712, see the device manual)', 'minimum' => 0, 'maximum' => 65535, 'width' => '420px'],
+                ['type' => 'ValidationTextBox', 'name' => 'ErwarteterSki', 'caption' => 'SKI of the remote device (optional, from app or type plate)', 'width' => '420px'],
+                ['type' => 'Label', 'caption' => 'If an SKI is entered, the gateway accepts only this exact device. Leave it empty to compare the SKI yourself after the check.'],
+                ['type' => 'Button', 'caption' => 'Check remote device', 'onClick' => 'echo EEBGW_GegenstellePruefen($id);'],
                 ['type' => 'Label', 'name' => 'GegenstelleZeile', 'caption' => $gegenZeile, 'color' => $gegenSki !== '' ? 0x2E8B3D : -1],
                 [
                     'type' => 'ExpansionPanel', 'name' => 'KandidatPanel', 'expanded' => true, 'visible' => !empty($kandidat['ski']),
-                    'caption' => 'Gefundenes Gerät bestätigen',
+                    'caption' => 'Confirm the device found',
                     'items' => [
-                        ['type' => 'Label', 'name' => 'KandidatZeile', 'caption' => 'Gefundener SKI: ' . (!empty($kandidat['ski']) ? EEBGWCert::lesbar((string)$kandidat['ski']) : '')],
-                        ['type' => 'Label', 'caption' => 'Nur übernehmen, wenn dieser SKI mit dem übereinstimmt, den das Gerät selbst anzeigt.'],
-                        ['type' => 'Button', 'caption' => 'Diesen SKI übernehmen', 'onClick' => 'echo EEBGW_GegenstelleUebernehmen($id);'],
+                        ['type' => 'Label', 'name' => 'KandidatZeile', 'caption' => $this->t('SKI found: %s', !empty($kandidat['ski']) ? EEBGWCert::lesbar((string)$kandidat['ski']) : '')],
+                        ['type' => 'Label', 'caption' => 'Only trust it if this SKI matches the one the device itself shows.'],
+                        ['type' => 'Button', 'caption' => 'Trust this SKI', 'onClick' => 'echo EEBGW_GegenstelleUebernehmen($id);'],
                     ],
                 ],
-                ['type' => 'CheckBox', 'name' => 'Aktiv', 'caption' => 'Verbindung aktiv'],
+                ['type' => 'CheckBox', 'name' => 'Aktiv', 'caption' => 'Connection enabled'],
             ],
         ];
 
         $gateway = [
-            'type' => 'ExpansionPanel', 'expanded' => $gegenSki !== '' && ($st['phase'] ?? '') !== 'data', 'caption' => '🪪  Dieses Gateway',
+            'type' => 'ExpansionPanel', 'expanded' => $gegenSki !== '' && ($st['phase'] ?? '') !== 'data', 'caption' => '🪪  This gateway',
             'items' => [
-                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI dieses Gateways (in der Gegenstelle freigeben)', 'value' => EEBGWCert::lesbar($eigenerSki), 'enabled' => false, 'width' => '520px'],
-                ['type' => 'Label', 'caption' => 'Diesen SKI trägst du in der Gegenstelle ein bzw. bestätigst ihn dort (App, Weboberfläche oder beim Netzbetreiber, je nach Gerät).'],
+                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI of this gateway (trust it in the remote device)', 'value' => EEBGWCert::lesbar($eigenerSki), 'enabled' => false, 'width' => '520px'],
+                ['type' => 'Label', 'caption' => 'Enter or confirm this SKI in the remote device (app, web interface or with the grid operator, depending on the device).'],
                 [
-                    'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => 'Neues Zertifikat erzeugen',
+                    'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => 'Create a new certificate',
                     'items' => [
-                        ['type' => 'Label', 'caption' => '⚠️ Danach hat das Gateway einen neuen SKI. Die Gegenstelle muss ihn neu freigeben, bis dahin besteht keine Verbindung.'],
-                        ['type' => 'Button', 'caption' => 'Neues Zertifikat erzeugen', 'onClick' => 'echo EEBGW_ZertifikatErneuern($id);', 'confirm' => 'Wirklich ein neues Zertifikat erzeugen? Die Gegenstelle muss den neuen SKI erneut freigeben.'],
+                        ['type' => 'Label', 'caption' => '⚠️ Afterwards the gateway has a new SKI. The remote device has to trust it again; until then there is no connection.'],
+                        ['type' => 'Button', 'caption' => 'Create new certificate', 'onClick' => 'echo EEBGW_ZertifikatErneuern($id);', 'confirm' => 'Really create a new certificate? The remote device has to trust the new SKI again.'],
                     ],
                 ],
             ],
@@ -747,24 +755,24 @@ class EEBUSGateway extends IPSModule
             $ucs = array_map(function ($u) {
                 return ($u['name'] ?? '?') . ' (' . ($u['actor'] ?? '?') . ')';
             }, $e['useCases']);
-            $kinder[] = ['type' => 'Label', 'caption' => '• #' . $e['owner'] . ' ' . IPS_GetName($e['owner']) . ' – Entität ' . $e['address'] . ' ' . $e['type'] . ($ucs ? ': ' . implode(', ', $ucs) : '')];
+            $kinder[] = ['type' => 'Label', 'caption' => '• #' . $e['owner'] . ' ' . IPS_GetName($e['owner']) . ' – ' . $this->t('entity %s', $e['address'] . ' ' . $e['type']) . ($ucs ? ': ' . implode(', ', $ucs) : '')];
         }
         if ($kinder === []) {
-            $kinder[] = ['type' => 'Label', 'caption' => 'ℹ️ Noch kein Fachmodul angemeldet. Ohne Fachmodul baut das Gateway die Verbindung auf, bietet aber keine Anwendungsfälle an.'];
+            $kinder[] = ['type' => 'Label', 'caption' => 'ℹ️ No application module registered yet. Without one the gateway establishes the connection but offers no use cases.'];
         }
         $remote = array_map(function ($u) {
             return $u['name'] . ' (' . $u['actor'] . ')';
         }, (array)($st['remoteUseCases'] ?? []));
 
         $zustand = [
-            'type' => 'ExpansionPanel', 'expanded' => $gegenSki !== '', 'caption' => '📡  Zustand',
+            'type' => 'ExpansionPanel', 'expanded' => $gegenSki !== '', 'caption' => '📡  State',
             'items' => array_merge([
                 ['type' => 'Label', 'name' => 'ZustandZeile', 'caption' => (($st['phase'] ?? '') === 'data' ? '✅ ' : 'ℹ️ ') . $this->zustandText($st)],
-                ['type' => 'Label', 'caption' => 'Anwendungsfälle der Gegenstelle: ' . ($remote ? implode(', ', array_unique($remote)) : '–')],
-                ['type' => 'Label', 'caption' => 'Letzter Heartbeat der Gegenstelle: ' . (!empty($st['remoteHeartbeat']) ? date('d.m.Y H:i:s', (int)$st['remoteHeartbeat']) : '–')],
-                ['type' => 'Label', 'caption' => 'Angemeldete Fachmodule:'],
+                ['type' => 'Label', 'caption' => $this->t('Use cases of the remote device: %s', $remote ? implode(', ', array_unique($remote)) : '–')],
+                ['type' => 'Label', 'caption' => $this->t('Last heartbeat of the remote device: %s', !empty($st['remoteHeartbeat']) ? date($this->t('Y-m-d H:i:s'), (int)$st['remoteHeartbeat']) : '–')],
+                ['type' => 'Label', 'caption' => 'Registered application modules:'],
             ], $kinder, [
-                ['type' => 'Button', 'caption' => 'Neu verbinden', 'onClick' => 'echo EEBGW_NeuVerbinden($id);'],
+                ['type' => 'Button', 'caption' => 'Reconnect', 'onClick' => 'echo EEBGW_NeuVerbinden($id);'],
             ]),
         ];
 

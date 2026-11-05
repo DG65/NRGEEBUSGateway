@@ -28,6 +28,37 @@ const VARIABLETYPE_BOOLEAN = 0;
 const VARIABLETYPE_STRING = 3;
 
 $GLOBALS['INST'] = [];
+$GLOBALS['LANG'] = 'de';
+$GLOBALS['TRANSLATE_AUFRUFE'] = 0;
+$GLOBALS['LOCALE'] = json_decode((string)file_get_contents(dirname(__DIR__) . '/EEBUSGateway/locale.json'), true)['translations']['de'] ?? [];
+
+/** Formular wie in der Konsole: Symcon übersetzt feste caption/confirm-Texte selbst über locale.json. */
+/** Jeder Symcon-Aufruf startet mit leerem Übersetzungsspeicher (Modulobjekt je Anfrage neu). */
+function neueAnfrage($gw): void
+{
+    $r = new ReflectionProperty(get_class($gw), 'eebgwUebersetzt');
+    $r->setValue($gw, []);
+}
+
+function formular($gw): array
+{
+    neueAnfrage($gw);
+    $f = json_decode($gw->GetConfigurationForm(), true);
+    $walk = function (&$x) use (&$walk) {
+        if (!is_array($x)) {
+            return;
+        }
+        foreach ($x as $k => &$v) {
+            if (in_array($k, ['caption', 'confirm'], true) && is_string($v) && $GLOBALS['LANG'] === 'de') {
+                $v = $GLOBALS['LOCALE'][$v] ?? $v;
+            } else {
+                $walk($v);
+            }
+        }
+    };
+    $walk($f);
+    return $f;
+}
 $GLOBALS['FEHLER'] = 0;
 $GLOBALS['OK'] = 0;
 
@@ -112,6 +143,7 @@ class IPSModule
     protected function GetValue($ident) { return $this->vars[$ident] ?? null; }
     protected function SetValue($ident, $v) { $this->vars[$ident] = $v; }
     protected function UpdateFormField($f, $p, $v) { $this->form[$f][$p] = $v; }
+    public function Translate($text) { $GLOBALS['TRANSLATE_AUFRUFE']++; return $GLOBALS['LANG'] === 'de' ? ($GLOBALS['LOCALE'][$text] ?? $text) : $text; }
     protected function SendDataToParent($json)
     {
         $d = json_decode($json, true);
@@ -266,14 +298,14 @@ pruefe(($r['ok'] ?? false) === true, 'Kind-Daten übernommen');
 $r = kindRuft($gw, 10003, ['Cmd' => 'SetData', 'Feature' => 'Measurement', 'Function' => 'x', 'Data' => []]);
 pruefe(($r['ok'] ?? true) === false, 'Kind-Daten für nicht angemeldetes Feature abgelehnt');
 
-$form = json_decode($gw->GetConfigurationForm(), true);
+$form = formular($gw);
 $flach = json_encode($form, JSON_UNESCAPED_UNICODE);
 pruefe(strpos($flach, 'Wozu dieses Modul') !== false && strpos($flach, 'Über dieses Modul') !== false, 'Formular: Rahmen nach Konvention');
 pruefe(strpos($flach, EEBGWCert::lesbar($gw->attrs['EigenerSki'])) !== false, 'Formular: eigener SKI sichtbar');
 pruefe(strpos($flach, 'SteuerboxHub (Test)') !== false, 'Formular: angemeldetes Fachmodul sichtbar');
 // Formular: Aufbau (SUITE.md 3a)
 $captions = function (EEBUSGateway $gw) {
-    $f = json_decode($gw->GetConfigurationForm(), true);
+    $f = formular($gw);
     $out = [];
     foreach ($f['elements'] as $e) {
         $out[] = [$e['caption'] ?? '', $e['expanded'] ?? null, $e['visible'] ?? true];
@@ -307,6 +339,60 @@ $gw->props['FormLayout'] = '[]';
 pruefe(strpos(file_get_contents(dirname(__DIR__) . '/EEBUSGateway/module.php'), 'IPS_LogMessage') === false, 'Logging nur über $this->LogMessage (Store-Checkliste 15)');
 
 // ---------------------------------------------------------------------------
+// Zweisprachigkeit (SUITE.md Konventionen 9)
+require_once __DIR__ . '/i18n-texte.php';
+$quellen = eebgwQuelltexte(dirname(__DIR__));
+$fehlend = array_diff_key($quellen, $GLOBALS['LOCALE']);
+pruefe($fehlend === [], 'Zweisprachig: jeder Quelltext steht in locale.json' . ($fehlend ? ' – fehlt: ' . implode(' | ', array_keys($fehlend)) : ''));
+pruefe(array_diff_key($GLOBALS['LOCALE'], $quellen) === [], 'Zweisprachig: keine verwaisten locale.json-Einträge');
+$platz = [];
+foreach ($GLOBALS['LOCALE'] as $en => $de) {
+    if (substr_count($en, '%s') !== substr_count($de, '%s') || $de === '') {
+        $platz[] = $en;
+    }
+}
+pruefe($platz === [], 'Zweisprachig: Platzhalter %s in beiden Sprachen gleich' . ($platz ? ' – ' . implode(' | ', $platz) : ''));
+$deutschImCode = [];
+foreach (array_merge([dirname(__DIR__) . '/EEBUSGateway/module.php'], glob(dirname(__DIR__) . '/libs/*.php')) as $datei) {
+    foreach (token_get_all((string)file_get_contents($datei)) as $tk) {
+        if (is_array($tk) && $tk[0] === T_CONSTANT_ENCAPSED_STRING && preg_match('/[äöüÄÖÜß]/u', $tk[1])) {
+            $deutschImCode[] = basename($datei) . ':' . $tk[2];
+        }
+    }
+}
+pruefe($deutschImCode === [], 'Zweisprachig: kein deutscher Text mehr im Code' . ($deutschImCode ? ' – ' . implode(', ', $deutschImCode) : ''));
+$gesammelt = function (array $f): array {
+    $out = [];
+    array_walk_recursive($f, function ($v, $k) use (&$out) {
+        if (in_array($k, ['caption', 'confirm', 'Panel'], true) && is_string($v)) {
+            $out[] = $v;
+        }
+    });
+    return $out;
+};
+$GLOBALS['LANG'] = 'de';
+$texteDe = $gesammelt(formular($gw));
+$englischGeblieben = array_values(array_filter($texteDe, function ($t) {
+    return isset($GLOBALS['LOCALE'][$t]) && $GLOBALS['LOCALE'][$t] !== $t;
+}));
+pruefe($englischGeblieben === [], 'Formular deutsch: kein englischer Quelltext übrig' . ($englischGeblieben ? ' – ' . implode(' | ', $englischGeblieben) : ''));
+$GLOBALS['LANG'] = 'en';
+$texteEn = $gesammelt(formular($gw));
+$deutschGeblieben = array_values(array_filter($texteEn, function ($t) {
+    return preg_match('/[äöüÄÖÜß]|\b(der|die|das|und|nicht|Gegenstelle|Verbindung|Fehler|Zustand)\b/u', str_replace(['§ 14a EnWG', 'SteuerboxHub (Test)'], '', $t)) === 1;
+}));
+pruefe($deutschGeblieben === [], 'Formular englisch: kein deutscher Text' . ($deutschGeblieben ? ' – ' . implode(' | ', $deutschGeblieben) : ''));
+if (getenv('EEBGW_FORM_EN')) {
+    echo implode("\n", array_map(function ($t) { return '      | ' . $t; }, $texteEn)), "\n";
+}
+neueAnfrage($gw);
+pruefe(strpos($gw->GegenstellePruefen(), 'remote device') !== false, 'Meldung englisch, wenn die Konsole englisch ist');
+$GLOBALS['LANG'] = 'de';
+$GLOBALS['TRANSLATE_AUFRUFE'] = 0;
+formular($gw);
+pruefe($GLOBALS['TRANSLATE_AUFRUFE'] < 80, 'Stolperstein 24: ' . $GLOBALS['TRANSLATE_AUFRUFE'] . ' Translate()-Aufrufe je Formular (< 80)');
+$GLOBALS['LANG'] = 'de';
+
 $live = array_search('--live', $argv, true);
 if ($live !== false) {
     [$bin, $cbCert, $cbKey] = array_slice($argv, $live + 1, 3);

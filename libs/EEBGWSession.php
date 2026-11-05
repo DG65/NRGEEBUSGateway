@@ -52,6 +52,8 @@ final class EEBGWSession
     // --- Zustand ---
     public $phase = 'idle';      // idle, http, cmi, hello, prot, pin, access, data, closed, error
     public $fehler = '';
+    public $fehlerVorlage = '';
+    public $fehlerWerte = [];
     public $buf = '';
     public $wsKey = '';
     public $msgCounter = 0;
@@ -187,7 +189,7 @@ final class EEBGWSession
     public function start(): string
     {
         $war = $this->phase === 'data';
-        foreach (['fehler' => '', 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
+        foreach (['fehler' => '', 'fehlerVorlage' => '', 'fehlerWerte' => [], 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
             'remoteShipId' => '', 'remoteDevice' => '', 'remoteEntities' => [], 'remoteUseCases' => [], 'subscriptions' => [],
             'bindings' => [], 'lastOwnHb' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
             'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0] as $k => $v) {
@@ -198,7 +200,7 @@ final class EEBGWSession
         }
         $this->phase = 'http';
         $this->wsKey = base64_encode(random_bytes(16));
-        $this->l('-> HTTP-Upgrade /ship/ (Unterprotokoll ship)');
+        $this->l('-> HTTP upgrade /ship/ (subprotocol ship)');
         return 'GET /ship/ HTTP/1.1' . "\r\n"
             . 'Host: ' . $this->host . ':' . $this->port . "\r\n"
             . 'Upgrade: websocket' . "\r\n"
@@ -215,7 +217,7 @@ final class EEBGWSession
             $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
         }
         if ($this->phase !== 'idle') {
-            $this->l('Verbindung getrennt: ' . $grund);
+            $this->l('Connection closed: ' . $grund);
         }
         $this->phase = 'idle';
         $this->buf = '';
@@ -246,7 +248,7 @@ final class EEBGWSession
             $p = strpos($this->buf, "\r\n\r\n");
             if ($p === false) {
                 if (strlen($this->buf) > 16384) {
-                    $this->fehlerZustand('Ungültige HTTP-Antwort der Gegenstelle.');
+                    $this->fehlerZustand('Invalid HTTP response from the remote device.');
                 }
                 return '';
             }
@@ -254,18 +256,18 @@ final class EEBGWSession
             $this->buf = substr($this->buf, $p + 4);
             $erwartet = base64_encode(sha1($this->wsKey . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true));
             if (!preg_match('#^HTTP/1\.1 101#', $kopf)) {
-                $this->fehlerZustand('WebSocket-Upgrade abgelehnt: ' . strtok($kopf, "\r\n"));
+                $this->fehlerZustand('WebSocket upgrade refused: %s', (string)strtok($kopf, "\r\n"));
                 return '';
             }
             if (!preg_match('/^Sec-WebSocket-Accept:\s*(\S+)/mi', $kopf, $m) || $m[1] !== $erwartet) {
-                $this->fehlerZustand('WebSocket-Upgrade: falscher Sec-WebSocket-Accept.');
+                $this->fehlerZustand('WebSocket upgrade: wrong Sec-WebSocket-Accept.');
                 return '';
             }
             if (!preg_match('/^Sec-WebSocket-Protocol:\s*ship\s*$/mi', $kopf)) {
-                $this->fehlerZustand('Gegenstelle bestätigt das Unterprotokoll "ship" nicht.');
+                $this->fehlerZustand('The remote device does not confirm the subprotocol "ship".');
                 return '';
             }
-            $this->l('<- 101 Switching Protocols, Unterprotokoll ship');
+            $this->l('<- 101 Switching Protocols, subprotocol ship');
             $this->phase = 'cmi';
             $this->l('-> SHIP init');
             $out .= $this->frame("\x00\x00");
@@ -307,8 +309,8 @@ final class EEBGWSession
                 continue;
             }
             if ($opcode === 0x8) {
-                $this->l('<- WebSocket-Schließen ' . bin2hex(substr($payload, 0, 2)) . ' ' . substr($payload, 2));
-                $this->getrennt('Gegenstelle hat die WebSocket-Verbindung geschlossen');
+                $this->l('<- WebSocket close ' . bin2hex(substr($payload, 0, 2)) . ' ' . substr($payload, 2));
+                $this->getrennt('remote device closed the WebSocket connection');
                 $this->phase = 'closed';
                 continue;
             }
@@ -319,10 +321,14 @@ final class EEBGWSession
         return $out;
     }
 
-    private function fehlerZustand(string $text): void
+    /** $vorlage ist ein englischer Quelltext (locale.json), %s-Platzhalter für $werte. */
+    private function fehlerZustand(string $vorlage, string ...$werte): void
     {
-        $this->l('FEHLER ' . $text);
+        $text = vsprintf($vorlage, $werte);
+        $this->l('ERROR ' . $text);
         $this->fehler = $text;
+        $this->fehlerVorlage = $vorlage;
+        $this->fehlerWerte = $werte;
         if ($this->phase === 'data') {
             $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
         }
@@ -359,7 +365,7 @@ final class EEBGWSession
             return $this->phase === 'data' ? $this->onSpine($body, $jetzt) : '';
         }
         if ($typ === 3) {
-            $this->l('<- SHIP Ende ' . $body);
+            $this->l('<- SHIP end ' . $body);
             return '';
         }
         $this->l('<- SHIP ' . $body);
@@ -382,11 +388,11 @@ final class EEBGWSession
                     $out .= $this->shipCtl(['connectionHello' => ['phase' => 'ready', 'waiting' => 60000]]);
                 } elseif (!$this->vertrauenAusstehend) {
                     $this->vertrauenAusstehend = true;
-                    $this->l('   Gegenstelle wartet auf Freigabe dieses Gateways (SKI dort bestätigen)');
+                    $this->l('   remote device waits for this gateway to be trusted (confirm the SKI there)');
                     $this->ereignis(['event' => 'trust', 'state' => 'pending']);
                 }
             } elseif ($ph === 'aborted') {
-                $this->fehlerZustand('Gegenstelle hat den Verbindungsaufbau abgebrochen (Gateway dort nicht freigegeben?).');
+                $this->fehlerZustand('The remote device aborted the connection setup (gateway not trusted there?).');
             }
         } elseif (isset($msg->messageProtocolHandshake)) {
             $mph = $msg->messageProtocolHandshake;
@@ -394,7 +400,7 @@ final class EEBGWSession
                 $fmt = $mph->formats->format ?? [];
                 if ((int)($mph->version->major ?? 0) !== 1 || !in_array('JSON-UTF8', (array)$fmt, true)) {
                     $out .= $this->shipCtl(['messageProtocolHandshakeError' => ['error' => 2]]);
-                    $this->fehlerZustand('Gegenstelle wählt ein nicht unterstütztes SHIP-Protokoll.');
+                    $this->fehlerZustand('The remote device selected an unsupported SHIP protocol.');
                     return $out;
                 }
                 $out .= $this->shipCtl(['messageProtocolHandshake' => ['handshakeType' => 'select',
@@ -405,7 +411,7 @@ final class EEBGWSession
         } elseif (isset($msg->connectionPinState)) {
             $ps = (string)($msg->connectionPinState->pinState ?? '');
             if ($ps !== 'none' && $ps !== 'pinOk') {
-                $this->fehlerZustand('Gegenstelle verlangt eine PIN (' . $ps . '); das unterstützt das Gateway noch nicht.');
+                $this->fehlerZustand('The remote device requires a PIN (%s); the gateway does not support this yet.', $ps);
                 return $out;
             }
             $this->phase = 'access';
@@ -419,7 +425,7 @@ final class EEBGWSession
             $this->remoteShipId = (string)($msg->accessMethods->id ?? '');
             $this->phase = 'data';
             $this->verbundenSeit = $jetzt;
-            $this->l('   SHIP-Verbindung steht, Gegenstelle ' . $this->remoteShipId);
+            $this->l('   SHIP connection established, remote device ' . $this->remoteShipId);
             $this->ereignis(['event' => 'connection', 'state' => 'connected', 'shipId' => $this->remoteShipId]);
             $out .= $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
                 'cmdClassifier' => 'read'], ['nodeManagementDetailedDiscoveryData' => new stdClass()]);
@@ -428,10 +434,10 @@ final class EEBGWSession
             if (($cc->phase ?? '') === 'announce') {
                 $out .= $this->shipCtl(['connectionClose' => ['phase' => 'confirm']]);
             }
-            $this->getrennt('Gegenstelle beendet die Verbindung (' . ($cc->reason ?? 'ohne Grund') . ')');
+            $this->getrennt('remote device ends the connection (' . ($cc->reason ?? 'no reason') . ')');
             $this->phase = 'closed';
         } elseif (isset($msg->messageProtocolHandshakeError)) {
-            $this->fehlerZustand('SHIP-Protokollfehler der Gegenstelle: ' . json_encode($msg->messageProtocolHandshakeError));
+            $this->fehlerZustand('SHIP protocol error reported by the remote device: %s', (string)json_encode($msg->messageProtocolHandshakeError));
         }
         return $out;
     }
@@ -469,7 +475,7 @@ final class EEBGWSession
         $d = EEBGWJson::parse(trim($body, "\x00"));
         $dg = $d->data->payload->datagram ?? null;
         if (!($dg instanceof stdClass) || !isset($dg->header)) {
-            $this->l('<- SPINE unlesbar');
+            $this->l('<- SPINE unreadable');
             return '';
         }
         $h = $dg->header;
@@ -506,7 +512,7 @@ final class EEBGWSession
             case 'read':
                 $daten = $this->leseDaten($dstE, $dstF, $fn, $jetzt);
                 if ($daten === null) {
-                    $this->l('   Lesefunktion nicht unterstützt: ' . $fn . ' an ' . json_encode($dstE) . '/' . $dstF);
+                    $this->l('   read not supported: ' . $fn . ' at ' . json_encode($dstE) . '/' . $dstF);
                     return $ergebnis(6, 'function not supported');
                 }
                 return $antwort([$fn => $daten], 'reply');
@@ -516,7 +522,7 @@ final class EEBGWSession
                     $r = $cmd->$fn->subscriptionRequest ?? null;
                     if ($r !== null) {
                         $this->abo($this->subscriptions, $r);
-                        $this->l('   Abo auf ' . ($r->serverFeatureType ?? '?'));
+                        $this->l('   subscription to ' . ($r->serverFeatureType ?? '?'));
                     }
                 } elseif ($fn === 'nodeManagementSubscriptionDeleteCall') {
                     $this->aboLoeschen($this->subscriptions, $cmd->$fn->subscriptionDelete ?? null);
@@ -524,7 +530,7 @@ final class EEBGWSession
                     $r = $cmd->$fn->bindingRequest ?? null;
                     if ($r !== null) {
                         $this->abo($this->bindings, $r);
-                        $this->l('   Bindung auf ' . ($r->serverFeatureType ?? '?'));
+                        $this->l('   binding to ' . ($r->serverFeatureType ?? '?'));
                     }
                 } elseif ($fn === 'nodeManagementBindingDeleteCall') {
                     $this->aboLoeschen($this->bindings, $cmd->$fn->bindingDelete ?? null);
@@ -544,7 +550,7 @@ final class EEBGWSession
             case 'result':
                 $r = $cmd->resultData ?? null;
                 if ($r !== null && (int)($r->errorNumber ?? 0) !== 0) {
-                    $this->l('   Gegenstelle meldet Fehler ' . json_encode($r));
+                    $this->l('   remote device reports error ' . json_encode($r));
                 }
                 return '';
         }
@@ -728,7 +734,7 @@ final class EEBGWSession
         $ent = count($e) === 1 ? $this->entity((int)$e[0]) : null;
         $feat = $ent === null ? null : $this->feature($ent, $f);
         if ($feat === null || !in_array('write', (array)($feat['functions'][$fn] ?? []), true)) {
-            $this->l('   Schreiben nicht erlaubt: ' . $fn . ' an ' . json_encode($e) . '/' . $f);
+            $this->l('   write not allowed: ' . $fn . ' at ' . json_encode($e) . '/' . $f);
             return [7, 'write not allowed', ''];
         }
         // SPINE: Schreiben nur von gebundenen Clients. Nicht hart verweigern (manche Geräte binden
@@ -740,7 +746,7 @@ final class EEBGWSession
             }
         }
         if (!$gebunden) {
-            $this->l('   Hinweis: Schreiben ohne vorherige Bindung');
+            $this->l('   note: write without prior binding');
         }
         $neu = json_decode((string)json_encode($cmd->$fn ?? new stdClass()), true) ?: [];
         $teilweise = false;
@@ -757,7 +763,7 @@ final class EEBGWSession
         [$gesamt, $geaendert] = self::zusammenfuehren($fn, is_array($alt) ? $alt : [], $neu, $teilweise);
         $this->data[$schluessel][$fn] = $gesamt;
         if ($geaendert === []) {
-            $this->l('   Schreibbefehl ohne Änderung gegenüber dem gemeldeten Stand');
+            $this->l('   write without change against the reported state');
             return [0, '', $this->notify($ent['address'], $f, $fn)];
         }
         $this->ereignis(['event' => 'write', 'owner' => $ent['owner'], 'entity' => $ent['address'], 'feature' => $feat['type'],
@@ -856,7 +862,7 @@ final class EEBGWSession
             }
             $this->remoteEntities = array_values($this->remoteEntities);
             foreach ($this->remoteEntities as $e) {
-                $this->l('   Gegenstelle Entität ' . json_encode($e['entity']) . ' ' . $e['type']);
+                $this->l('   remote entity ' . json_encode($e['entity']) . ' ' . $e['type']);
             }
             $out = $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
                 'cmdClassifier' => 'read'], ['nodeManagementUseCaseData' => new stdClass()]);
@@ -881,7 +887,7 @@ final class EEBGWSession
             $this->remoteHbTimeout = self::dauerSekunden((string)($daten->heartbeatTimeout ?? ''));
             if ($this->hbVerlorenGemeldet) {
                 $this->hbVerlorenGemeldet = false;
-                $this->l('   Heartbeat der Gegenstelle wieder da');
+                $this->l('   remote heartbeat is back');
                 $this->ereignis(['event' => 'heartbeat', 'state' => 'ok']);
             }
             return '';
@@ -953,7 +959,7 @@ final class EEBGWSession
             $grenze = max(self::HEARTBEAT_VERLOREN_S, $this->remoteHbTimeout);
             if ($jetzt - $seit > $grenze) {
                 $this->hbVerlorenGemeldet = true;
-                $this->l('   Heartbeat der Gegenstelle seit ' . ($jetzt - $seit) . ' s ausgeblieben');
+                $this->l('   remote heartbeat missing for ' . ($jetzt - $seit) . ' s');
                 $this->ereignis(['event' => 'heartbeat', 'state' => 'lost', 'since' => $seit]);
             }
         }
