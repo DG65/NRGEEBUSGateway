@@ -53,6 +53,16 @@ trait EEBGWFormular
         return $mit === false ? $aus : $mit;
     }
 
+    /**
+     * Kennzeichnet einen festen Formulartext, der nicht direkt hinter 'caption' => steht.
+     * Übersetzt NICHT (das macht die Konsole, Store-Checkliste 25); nur damit
+     * .tools/i18n-texte.php den Text für locale.json findet.
+     */
+    protected static function fest(string $text): string
+    {
+        return $text;
+    }
+
     protected function registerFormAttributes(): void
     {
         $this->RegisterAttributeBoolean('PurposeIntroGone', false);
@@ -129,7 +139,8 @@ trait EEBGWFormular
         foreach ($pending as $version => $lines) {
             $items[] = ['type' => 'Label', 'caption' => $this->t('Version %s:', (string)$version)];
             foreach ($lines as $line) {
-                $items[] = ['type' => 'Label', 'caption' => $this->t($line)];
+                // Feste Texte übersetzt die Konsole selbst (Store-Checkliste 25).
+                $items[] = ['type' => 'Label', 'caption' => $line];
             }
         }
         $items[] = ['type' => 'Button', 'caption' => 'Got it – don\'t show again', 'onClick' => 'EEBGW_AckNews($id);'];
@@ -146,7 +157,7 @@ trait EEBGWFormular
         $lib = $this->eebgwLibrary();
         $ver = isset($lib['Version'])
             ? 'ℹ️ ' . $this->t('EEBUS gateway version %s (build %s)', (string)$lib['Version'], (string)($lib['Build'] ?? '?'))
-            : 'ℹ️ ' . $this->t('EEBUS gateway');
+            : self::fest('ℹ️ EEBUS gateway');
         return [
             'type' => 'ExpansionPanel', 'expanded' => false,
             'caption' => '📖  Documentation & help',

@@ -709,7 +709,7 @@ class EEBUSGateway extends IPSModule
                 . (isset($info['geprueft']) ? ', ' . $this->t('checked on %s', date($this->t('Y-m-d H:i'), (int)$info['geprueft'])) : '')
                 . (!empty($info['chiffre']) ? ' (' . $info['protokoll'] . ', ' . $info['chiffre'] . ')' : '');
         } else {
-            $gegenZeile = 'ℹ️ ' . $this->t('No remote device set yet. Enter address and port, click “Apply”, then “Check remote device”.');
+            $gegenZeile = self::fest('ℹ️ No remote device set yet. Enter address and port, click “Apply”, then “Check remote device”.');
         }
 
         $verbindung = [

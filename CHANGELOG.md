@@ -5,6 +5,8 @@
 - 🌍 Neu: zweisprachig Deutsch/Englisch (Formular, Meldungen, Variablennamen, Einträge im Meldungsprotokoll); folgt der Sprache
   der Symcon-Konsole. Englische Anleitung `README.en.md`. Kennungen (Idents, Funktions-, Property- und
   Attributnamen, Kind-Schnittstelle) unverändert.
+- Feste Formulartexte übersetzt die Konsole selbst (Store-Checkliste 25); das Modul übersetzt nur
+  Texte mit eingesetzten Werten, Rückmeldungen, Variablennamen und Meldungen.
 
 ## 0.1.3 (Build 4, 29.10.2026)
 
