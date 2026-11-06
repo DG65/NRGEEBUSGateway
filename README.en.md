@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.4.0-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.5.0-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -16,7 +16,7 @@ happens with the values is decided by application modules attached as child inst
 **NRG-Stack WPEEBUSHub** for heat pumps (the gateway acts as energy management there). One gateway
 per device.
 
-> Version 0.4.0: early version, tested against the simulators from
+> Version 0.5.0: early version, tested against the simulators from
 > [eebus-go](https://github.com/enbility/eebus-go) (control box `controlbox`, consumer `evse` with
 > measurements). Not yet tested with real devices.
 
@@ -29,6 +29,18 @@ per device.
    beforehand; then only this exact device is accepted.
 4. Trust the **SKI of this gateway** (shown in the form) in the remote device.
 5. Create the application module (e.g. SteuerboxHub) as a child instance.
+
+### The device connects by itself (e.g. Wolf Link)
+
+Some devices only open the connection themselves and accept none. Then:
+
+1. Under “Remote device” choose **“The device connects to the gateway”**, check the port (default
+   4712), “Apply”. The gateway creates a server socket.
+2. At the bottom under “This gateway” click **“Announce in the network”** (adds `_ship._tcp` to the
+   DNS-SD instance of Symcon).
+3. In the app of the device, search for EEBUS devices and trust the gateway.
+4. When the device reports, the form shows “A device wants to connect” with its SKI - compare it and
+   click “Trust this SKI”. With the device's next attempt the connection is established.
 
 ### Alternative: pairing via the metering point operator (SHIP Pairing Service)
 
@@ -54,9 +66,8 @@ Some metering point operators pair control box and energy management via the SHI
 
 ## Limits of this version
 
-- Client role only: the gateway connects to the remote device. Devices that can only open the
-  connection themselves are not supported yet (Symcon's server socket cannot require a client
-  certificate).
+- Server role (the device connects, e.g. Wolf Link) only tested against the simulator; the gateway does
+  TLS itself for it, because Symcon's server socket does not pass the client certificate to the module.
 - Without the SHIP Pairing Service, address and port are entered manually (no general device discovery).
 - No PIN pairing.
 
@@ -77,6 +88,8 @@ Interface between gateway and child: [.docs/kind-schnittstelle.md](.docs/kind-sc
 | `EEBGW_PairingStarten(int $id)` | Text: create pairing data, wait for the remote device |
 | `EEBGW_PairingBeenden(int $id)` | Text: stop waiting |
 | `EEBGW_ResetFormLayout(int $id)` | Text: reset "Form: layout" to default in the open form |
+| `EEBGW_AnkuendigungEintragen(int $id)` | Text: announce the gateway as `_ship._tcp` in the DNS-SD instance (server role) |
+| `EEBGW_AnkuendigungEntfernen(int $id)` | Text: remove that entry again |
 | `EEBGW_GetState(int $id)` | JSON: connection state (`contractVersion` 1.0) |
 
 The function names are German identifiers and stay unchanged.

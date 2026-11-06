@@ -33,6 +33,11 @@ trait EEBGWFormular
             '• 🔁 New: the gateway can also act as energy management towards EEBUS devices such as heat pumps or wallboxes - it subscribes to their data and writes limits on behalf of an application module (first of all NRG-Stack WPEEBUSHub for heat pumps).',
             '• One gateway per device: create a separate gateway for each heat pump, wallbox or control box.',
         ],
+        '0.5.0' => [
+            '• 🔄 New: server role - devices that only open the connection themselves (e.g. Wolf Link) can now connect to the gateway. Choose the direction under “Remote device”, announce the gateway in the network (DNS-SD) and trust the device when it reports.',
+            '• TLS for this direction is done by the gateway itself (mandatory EEBUS cipher, client certificate required); the server socket only passes the bytes through.',
+            '• Fix: large EEBUS messages split by the remote device into several WebSocket frames are now put back together.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';
@@ -174,7 +179,7 @@ trait EEBGWFormular
                 ['type' => 'Label', 'caption' => 'Setup in three steps: 1. Enter address and port of the remote device (see its manual or app). 2. Click “Check remote device” – the gateway fetches the certificate and shows the SKI. If it matches the SKI of the remote device, trust it. 3. Trust the SKI of this gateway in the remote device (app, web interface or with the grid operator).'],
                 ['type' => 'Label', 'caption' => 'If your metering point operator uses the SHIP Pairing Service, use “Pairing via the metering point operator” at the bottom instead: you hand over the QR code, and the gateway finds the control box by itself.'],
                 ['type' => 'Label', 'caption' => 'The SKI is the fingerprint of an EEBUS device. Each side must know the other side\'s SKI; only then can a connection be established.'],
-                ['type' => 'Label', 'caption' => 'The gateway connects to the remote device as a client. Devices that can only open the connection themselves are not yet supported in this version.'],
+                ['type' => 'Label', 'caption' => 'Most devices are reached by the gateway. Devices that only open the connection themselves (e.g. Wolf Link): choose “The device connects to the gateway” under “Remote device”, announce the gateway in the network at the bottom and trust it in the app of the device; when the device reports, trust its SKI here.'],
                 ['type' => 'Button', 'caption' => 'Manual on GitHub', 'onClick' => "echo '" . self::$EEBGW_REPO_URL . "';", 'link' => true],
             ],
         ];

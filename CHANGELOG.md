@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 (Build 8, 06.11.2026)
+
+- 🔄 Neu: **Server-Rolle** für Geräte, die die Verbindung nur selbst aufbauen (z. B. Wolf Link).
+  Property `Richtung` (0 = Gateway verbindet sich, Standard; 1 = Gerät verbindet sich) und
+  `ServerPort` (Standard 4712). Das Gateway legt dann einen Server Socket ohne SSL an und macht TLS 1.2
+  selbst (`libs/EEBGWTlsServer.php`: ECDHE-ECDSA P-256, `TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256` als
+  SHIP-Pflicht, zusätzlich AES-128-GCM, Extended Master Secret, Client-Zertifikat verlangt, keine
+  Wiederaufnahme, keine Neuverhandlung). Vertrauen über den SKI des Client-Zertifikats: festgelegtes
+  Gerät, erwarteter SKI oder Bestätigung „Ein Gerät möchte sich verbinden“ im Formular.
+- SHIP-Sitzung als Server: HTTP-Upgrade beantworten, unmaskierte Rahmen, init/hello/Protokoll-Auswahl
+  in Server-Reihenfolge.
+- Ankündigung im Netzwerk (`_ship._tcp` mit txtvers, id, path, ski, register, brand, model, type) als
+  Eintrag in der DNS-SD-Instanz von Symcon: `EEBGW_AnkuendigungEintragen` / `EEBGW_AnkuendigungEntfernen`,
+  nur auf Knopfdruck mit Rückfrage (ändert eine Instanz außerhalb des Moduls).
+- Behoben: In mehrere WebSocket-Rahmen geteilte Nachrichten (gorilla/websocket teilt große Nachrichten,
+  gesehen bei der Discovery einer simulierten Wärmepumpe) wurden als unlesbar verworfen.
+- Neuer Status 205: Elterninstanz passt nicht zur Richtung.
+- Geprüft: TLS-Server gegen `openssl s_client` (CBC, GCM, ohne Client-Zertifikat, falsche Chiffre) und
+  live gegen eebus-go als Wärmepumpe, die das Gateway per mDNS findet und sich selbst verbindet
+  (Prüfstand Teil 5 `--live-server`): Bestätigung des SKI, zweite Verbindung, SHIP-Sitzung, LPC-Grenze.
+
 ## 0.4.0 (Build 7, 06.11.2026)
 
 - 🔁 Neu: Rolle **Energiemanagement** (Kind-Schnittstelle 1.1, rückwärtskompatibel). Ein Kind meldet

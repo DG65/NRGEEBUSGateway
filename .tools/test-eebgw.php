@@ -91,6 +91,17 @@ function IPS_CreateInstance(string $guid): int { $id = 20000 + count($GLOBALS['I
 function IPS_ConnectInstance(int $id, int $parent): bool { $GLOBALS['INST'][$id]->parentId = $parent; return true; }
 function IPS_DeleteInstance(int $id): bool { unset($GLOBALS['INST'][$id]); return true; }
 function IPS_SetName(int $id, string $n): bool { $GLOBALS['INST'][$id]->name = $n; return true; }
+function IPS_GetProperty(int $id, string $n) { return $GLOBALS['INST'][$id]->config[$n] ?? null; }
+/** Nachgebildete DNS-SD-Instanz (Liste „Services“ für die Ankündigung). */
+class FakeDnssd
+{
+    public $InstanceID = 99001;
+    public $config = ['Services' => '[]'];
+    public $modul = '{780B2D48-916C-4D59-AD35-5A429B2355A5}';
+    public $name = 'DNS-SD';
+    public function __construct() { $GLOBALS['INST'][99001] = $this; }
+}
+new FakeDnssd();
 // Nachgebildete DNS-SD-Instanz: $GLOBALS['MDNS'][Typ] = Liste von ZC_QueryService-Ergebnissen.
 $GLOBALS['MDNS'] = [];
 function IPS_GetInstanceListByModuleID(string $g): array { return $g === '{780B2D48-916C-4D59-AD35-5A429B2355A5}' ? [99001] : []; }
@@ -161,7 +172,10 @@ class IPSModule
     {
         $d = json_decode($json, true);
         $this->gesendet[] = mb_convert_encoding($d['Buffer'], 'ISO-8859-1', 'UTF-8');
-        if (isset($GLOBALS['BRUECKE'])) { fwrite($GLOBALS['BRUECKE'], end($this->gesendet)); }
+        if (isset($GLOBALS['BRUECKE'])) {
+            if ((int)($d['Type'] ?? 0) === 2) { @fclose($GLOBALS['BRUECKE']); unset($GLOBALS['BRUECKE']); $GLOBALS['GETRENNT'] = ($GLOBALS['GETRENNT'] ?? 0) + 1; }
+            else { @fwrite($GLOBALS['BRUECKE'], end($this->gesendet)); }
+        }
         return '';
     }
     protected function SendDataToChildren($json) { $this->anKinder[] = json_decode($json, true); }
@@ -715,6 +729,136 @@ if ($lv !== false) {
     } finally {
         proc_terminate($proc);
         proc_close($proc);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Teil 5 (--live-server <verbraucher-sim> <cert> <key>): Server-Rolle. Das Gateway lauscht (Server
+// Socket nachgebildet über einen TCP-Server), kündigt sich per mDNS an (macOS dns-sd -R), die
+// simulierte Wärmepumpe findet es und verbindet sich selbst. Erste Verbindung: unbekannter SKI →
+// Bestätigung im Formular; nach „Diesen SKI übernehmen“ verbindet sich das Gerät erneut und die
+// SHIP-Sitzung (Gateway als Server) kommt zustande; danach schreibt ein Kind eine Grenze.
+$ls = array_search('--live-server', $argv, true);
+if ($ls !== false) {
+    [$bin, $vCert, $vKey] = array_slice($argv, $ls + 1, 3);
+    echo "\nTeil 5: Server-Rolle live – Gerät verbindet sich zum Gateway\n";
+    $port = 4716;
+    $sgw = new EEBUSGateway(10500);
+    $ssock = new FakeSocket(10501);
+    $ssock->modul = '{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}';
+    $ssock->name = 'Server Socket';
+    $sgw->parentId = 10501;
+    $sgw->Create();
+    $sgw->props['Richtung'] = 1;
+    $sgw->props['ServerPort'] = $port;
+    $sgw->ApplyChanges();
+    pruefe($ssock->config['Open'] === true && $ssock->config['Port'] === $port && $ssock->config['UseSSL'] === false, 'Server Socket eingestellt: offen, Port ' . $port . ', ohne SSL (TLS macht das Gateway)');
+    pruefe($sgw->status === 104 && strpos($sgw->vars['Zustand'] ?? '', '') !== false, 'Ohne vertrautes Gerät: Status 104 (warte auf Gerät)');
+    neueAnfrage($sgw);
+    $antwort = $sgw->AnkuendigungEintragen();
+    $eintrag = json_decode($GLOBALS['INST'][99001]->config['Services'], true)[0] ?? [];
+    $txt = array_column($eintrag['TXTRecords'] ?? [], 'Value');
+    pruefe(strpos($antwort, '✅') === 0 && ($eintrag['RegType'] ?? '') === '_ship._tcp' && in_array('ski=' . $sgw->attrs['EigenerSki'], $txt, true),
+        'Ankündigung in der DNS-SD-Instanz eingetragen (_ship._tcp, ski, id, path)');
+    neueAnfrage($sgw);
+    pruefe(strpos($sgw->AnkuendigungEintragen(), 'bereits') !== false, 'Zweites Eintragen ändert nichts');
+    new FakeKind(10502, 10500);
+    $client = function (string $t) { return ['type' => $t, 'role' => 'client', 'functions' => []]; };
+    kindRuft($sgw, 10502, ['Cmd' => 'Register', 'Entity' => ['type' => 'CEM',
+        'useCases' => [['actor' => 'EnergyGuard', 'name' => 'limitationOfPowerConsumption', 'version' => '1.0.0', 'subRevision' => 'release', 'scenarios' => [1, 2, 3, 4]]],
+        'features' => [$client('LoadControl'), $client('DeviceConfiguration')],
+        'remote' => ['entityTypes' => ['HeatPumpAppliance', 'EVSE'], 'features' => [
+            ['type' => 'LoadControl', 'subscribe' => true, 'bind' => true, 'read' => ['loadControlLimitDescriptionListData', 'loadControlLimitListData']]]]]]);
+
+    // mDNS-Ankündigung wie die DNS-SD-Instanz, TCP-Server wie der Server Socket
+    $mdns = proc_open(array_merge(['dns-sd', '-R', $eintrag['Name'], '_ship._tcp', 'local', (string)$port], $txt), [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $p1);
+    $srv = stream_socket_server("tcp://0.0.0.0:$port", $en, $es);
+    $log = sys_get_temp_dir() . '/eebgw-server-sim.log';
+    $proc = proc_open([$bin, '-port', '4717', '-certpath', $vCert, '-keypath', $vKey, '-remoteski', $sgw->attrs['EigenerSki'], '-type', 'heatpump'],
+        [1 => ['file', $log, 'w'], 2 => ['file', $log, 'a']], $p2);
+    $paket = function (int $typ, string $daten, int $cport) use ($sgw) {
+        $sgw->ReceiveData(json_encode(['DataID' => '{7A1272A4-CBDB-46EF-BFC6-DCF4A53D2FC7}', 'Buffer' => mb_convert_encoding($daten, 'UTF-8', 'ISO-8859-1'),
+            'ClientIP' => '127.0.0.1', 'ClientPort' => $cport, 'Type' => $typ]));
+    };
+    try {
+        $verbindungen = 0;
+        $kandidatGesehen = false;
+        $geschrieben = null;
+        $ergebnis = null;
+        $entity = null;
+        $limitId = null;
+        $ende = time() + 120;
+        while (time() < $ende && $ergebnis === null) {
+            $lesen = [$srv];
+            if (isset($GLOBALS['BRUECKE'])) { $lesen[] = $GLOBALS['BRUECKE']; }
+            $w = $x = null;
+            if (@stream_select($lesen, $w, $x, 1) > 0) {
+                foreach ($lesen as $r) {
+                    if ($r === $srv) {
+                        $neu = stream_socket_accept($srv, 1, $peer);
+                        if ($neu === false) { continue; }
+                        if (isset($GLOBALS['BRUECKE'])) { @fclose($GLOBALS['BRUECKE']); }
+                        $verbindungen++;
+                        $cport = (int)substr((string)$peer, strrpos((string)$peer, ':') + 1);
+                        stream_set_blocking($neu, false);
+                        $GLOBALS['BRUECKE'] = $neu;
+                        $paket(1, '', $cport);
+                        continue;
+                    }
+                    $d = fread($r, 65536);
+                    if ($d === '' && feof($r)) {
+                        @fclose($r);
+                        unset($GLOBALS['BRUECKE']);
+                        $paket(2, '', $cport);
+                        continue;
+                    }
+                    $paket(0, $d, $cport);
+                }
+            }
+            $sgw->Takt();
+            if (!$kandidatGesehen && !empty(json_decode($sgw->attrs['Kandidat'], true)['ski'])) {
+                $kandidatGesehen = true;
+                $k = json_decode($sgw->attrs['Kandidat'], true);
+                pruefe($k['ski'] === (string)EEBGWCert::skiAusZertifikat((string)file_get_contents($vCert)) && ($GLOBALS['GETRENNT'] ?? 0) >= 1,
+                    'Erste Verbindung: TLS steht, unbekannter SKI wird zur Bestätigung angezeigt, Verbindung getrennt');
+                neueAnfrage($sgw);
+                $form = json_encode(formular($sgw), JSON_UNESCAPED_UNICODE);
+                pruefe(strpos($form, 'Ein Gerät möchte sich verbinden') !== false, 'Formular: „Ein Gerät möchte sich verbinden“ mit SKI');
+                neueAnfrage($sgw);
+                pruefe(strpos($sgw->GegenstelleUebernehmen(), '✅') === 0, 'SKI übernommen (wie „Diesen SKI übernehmen“)');
+            }
+            foreach ($sgw->anKinder as $e) {
+                if (($e['Target'] ?? 0) !== 10502) { continue; }
+                if ($e['Event'] === 'remoteEntity' && $e['state'] === 'added') { $entity = $e['entity']; }
+                if ($e['Event'] === 'data' && $e['function'] === 'loadControlLimitDescriptionListData') {
+                    foreach ($e['data']['loadControlLimitDescriptionData'] ?? [] as $ld) {
+                        if (($ld['limitDirection'] ?? '') === 'consume') { $limitId = $ld['limitId']; }
+                    }
+                }
+                if ($e['Event'] === 'result' && $geschrieben !== null && $e['msgCounter'] === $geschrieben) { $ergebnis = $e; }
+            }
+            $sgw->anKinder = [];
+            if ($entity !== null && $limitId !== null && $geschrieben === null) {
+                $w = kindRuft($sgw, 10502, ['Cmd' => 'Write', 'Entity' => $entity, 'Feature' => 'LoadControl', 'Function' => 'loadControlLimitListData',
+                    'Data' => ['loadControlLimitData' => [['limitId' => $limitId, 'isLimitActive' => true, 'value' => ['number' => 2500, 'scale' => 0]]]]]);
+                $geschrieben = $w['msgCounter'] ?? -1;
+            }
+        }
+        pruefe($kandidatGesehen, 'Gerät hat sich über die mDNS-Ankündigung gefunden und verbunden');
+        pruefe($verbindungen >= 2 && ($sgw->vars['Verbunden'] ?? false) === true, "Nach dem Übernehmen: SHIP-Sitzung mit dem Gateway als Server steht ($verbindungen Verbindungen)");
+        pruefe($ergebnis !== null && $ergebnis['errorNumber'] === 0, 'Grenze 2500 W über die Server-Verbindung geschrieben und bestätigt');
+        pruefe(strpos((string)file_get_contents($log), 'SIM limit 2500 W active true') !== false, 'Simulator: Grenze 2500 W übernommen');
+        $state = json_decode($sgw->GetState(), true);
+        pruefe($state['connected'] === true && $sgw->status === 102, 'GetState verbunden, Status 102');
+        neueAnfrage($sgw);
+        pruefe(strpos($sgw->AnkuendigungEntfernen(), '✅') === 0 && json_decode($GLOBALS['INST'][99001]->config['Services'], true) === [], 'Ankündigung wieder entfernt');
+    } finally {
+        if (isset($GLOBALS['BRUECKE'])) { @fclose($GLOBALS['BRUECKE']); unset($GLOBALS['BRUECKE']); }
+        proc_terminate($proc);
+        proc_close($proc);
+        proc_terminate($mdns);
+        proc_close($mdns);
+        fclose($srv);
     }
 }
 

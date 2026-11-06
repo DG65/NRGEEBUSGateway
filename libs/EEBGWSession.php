@@ -5,8 +5,10 @@ declare(strict_types=1);
 require_once __DIR__ . '/EEBGWJson.php';
 
 // ===========================================================================
-// Eine SHIP-Verbindung in der Client-Rolle: WebSocket, SHIP-Handshake und ein
-// generischer SPINE-Knoten.
+// Eine SHIP-Verbindung in der Client- oder Server-Rolle: WebSocket, SHIP-
+// Handshake und ein generischer SPINE-Knoten. Server-Rolle (ab 0.5.0): das
+// Gerät verbindet sich zum Gateway (z. B. Wolf Link), TLS davor macht
+// EEBGWTlsServer.
 //
 // Transportunabhängig: feed() bekommt die Rohbytes aus der TLS-Verbindung und
 // liefert die zu sendenden Bytes zurück. Kein Closure-Zustand, damit das Modul
@@ -51,6 +53,8 @@ final class EEBGWSession
     public $localShipId = '';
     public $localDevice = '';
     public $deviceType = 'EnergyManagementSystem';
+    /** @var string client = Gateway verbindet sich, server = Gerät verbindet sich zum Gateway */
+    public $rolle = 'client';
     /** @var array Ergebnis von buildModel() */
     public $model = ['entities' => []];
     /** @var array "e/f" => [Funktion => Daten als Array] */
@@ -62,6 +66,10 @@ final class EEBGWSession
     public $fehlerVorlage = '';
     public $fehlerWerte = [];
     public $buf = '';
+    // Angefangene, in mehrere Rahmen geteilte WebSocket-Nachricht (gorilla/websocket teilt große
+    // Nachrichten, live gesehen 06.11.2026 bei der Discovery-Antwort einer simulierten Wärmepumpe).
+    public $fragment = '';
+    public $fragmentOpcode = 0;
     public $wsKey = '';
     public $msgCounter = 0;
     public $helloOk = false;
@@ -202,17 +210,8 @@ final class EEBGWSession
     /** Neue Verbindung: Zustand zurücksetzen und HTTP-Upgrade liefern (muss binnen 10 s raus). */
     public function start(): string
     {
-        $war = $this->phase === 'data';
-        foreach (['fehler' => '', 'fehlerVorlage' => '', 'fehlerWerte' => [], 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
-            'remoteShipId' => '', 'remoteDevice' => '', 'remoteEntities' => [], 'remoteUseCases' => [], 'subscriptions' => [],
-            'bindings' => [], 'lastOwnHb' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
-            'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0,
-            'remoteData' => [], 'ausstehend' => [], 'remoteAngebunden' => []] as $k => $v) {
-            $this->$k = $v;
-        }
-        if ($war) {
-            $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
-        }
+        $this->zuruecksetzen();
+        $this->rolle = 'client';
         $this->phase = 'http';
         $this->wsKey = base64_encode(random_bytes(16));
         $this->l('-> HTTP upgrade /ship/ (subprotocol ship)');
@@ -223,6 +222,30 @@ final class EEBGWSession
             . 'Sec-WebSocket-Key: ' . $this->wsKey . "\r\n"
             . 'Sec-WebSocket-Version: 13' . "\r\n"
             . 'Sec-WebSocket-Protocol: ship' . "\r\n\r\n";
+    }
+
+    /** Server-Rolle: Gerät hat sich verbunden (TLS steht), jetzt kommt sein HTTP-Upgrade. */
+    public function startServer(): void
+    {
+        $this->zuruecksetzen();
+        $this->rolle = 'server';
+        $this->phase = 'httpserver';
+        $this->l('<- device connected, waiting for HTTP upgrade');
+    }
+
+    private function zuruecksetzen(): void
+    {
+        $war = $this->phase === 'data';
+        foreach (['fehler' => '', 'fehlerVorlage' => '', 'fehlerWerte' => [], 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
+            'remoteShipId' => '', 'remoteDevice' => '', 'remoteEntities' => [], 'remoteUseCases' => [], 'subscriptions' => [],
+            'bindings' => [], 'lastOwnHb' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
+            'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0,
+            'remoteData' => [], 'ausstehend' => [], 'remoteAngebunden' => [], 'fragment' => '', 'fragmentOpcode' => 0] as $k => $v) {
+            $this->$k = $v;
+        }
+        if ($war) {
+            $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
+        }
     }
 
     /** Verbindung ist weg (Socket geschlossen). */
@@ -243,12 +266,17 @@ final class EEBGWSession
         $len = strlen($payload);
         $h = chr(0x80 | $opcode);
         if ($len < 126) {
-            $h .= chr(0x80 | $len);
+            $h .= chr($len);
         } elseif ($len < 65536) {
-            $h .= chr(0x80 | 126) . pack('n', $len);
+            $h .= chr(126) . pack('n', $len);
         } else {
-            $h .= chr(0x80 | 127) . pack('J', $len);
+            $h .= chr(127) . pack('J', $len);
         }
+        if ($this->rolle === 'server') {
+            // Server-Rahmen sind unmaskiert (RFC 6455 5.1).
+            return $h . $payload;
+        }
+        $h[1] = chr(ord($h[1]) | 0x80);
         // Client-Rahmen müssen maskiert sein (RFC 6455 5.3).
         $mask = random_bytes(4);
         $maskiert = $payload ^ str_repeat($mask, intdiv($len, 4) + 1);
@@ -259,6 +287,31 @@ final class EEBGWSession
     {
         $this->buf .= $bytes;
         $out = '';
+        if ($this->phase === 'httpserver') {
+            $p = strpos($this->buf, "\r\n\r\n");
+            if ($p === false) {
+                if (strlen($this->buf) > 16384) {
+                    $this->fehlerZustand('Invalid HTTP request from the remote device.');
+                }
+                return '';
+            }
+            $kopf = substr($this->buf, 0, $p);
+            $this->buf = substr($this->buf, $p + 4);
+            if (!preg_match('#^GET \S+ HTTP/1\.1#', $kopf) || !preg_match('/^Sec-WebSocket-Key:\s*(\S+)/mi', $kopf, $m)) {
+                $this->fehlerZustand('Invalid HTTP request from the remote device.');
+                return "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+            }
+            if (!preg_match('/^Sec-WebSocket-Protocol:.*\bship\b/mi', $kopf)) {
+                $this->fehlerZustand('The remote device does not request the subprotocol "ship".');
+                return "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
+            }
+            $this->l('<- HTTP upgrade request, subprotocol ship');
+            $this->l('-> 101 Switching Protocols');
+            $this->phase = 'cmi';
+            $out .= "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                . 'Sec-WebSocket-Accept: ' . base64_encode(sha1($m[1] . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11', true)) . "\r\n"
+                . "Sec-WebSocket-Protocol: ship\r\n\r\n";
+        }
         if ($this->phase === 'http') {
             $p = strpos($this->buf, "\r\n\r\n");
             if ($p === false) {
@@ -311,6 +364,7 @@ final class EEBGWSession
             if (strlen($this->buf) < $off + $len) {
                 break;
             }
+            $fin = (ord($this->buf[0]) & 0x80) !== 0;
             $opcode = ord($this->buf[0]) & 0x0f;
             $payload = substr($this->buf, $off, $len);
             if ($maskiert) {
@@ -327,6 +381,24 @@ final class EEBGWSession
                 $this->l('<- WebSocket close ' . bin2hex(substr($payload, 0, 2)) . ' ' . substr($payload, 2));
                 $this->getrennt('remote device closed the WebSocket connection');
                 $this->phase = 'closed';
+                continue;
+            }
+            if ($opcode === 0x0) {
+                // Fortsetzung einer geteilten Nachricht (RFC 6455 5.4)
+                $this->fragment .= $payload;
+                if (strlen($this->fragment) > 4194304) {
+                    $this->fehlerZustand('Message from the remote device too large.');
+                    break;
+                }
+                if (!$fin) {
+                    continue;
+                }
+                $payload = $this->fragment;
+                $opcode = $this->fragmentOpcode;
+                $this->fragment = '';
+            } elseif (!$fin && ($opcode === 0x2 || $opcode === 0x1)) {
+                $this->fragment = $payload;
+                $this->fragmentOpcode = $opcode;
                 continue;
             }
             if ($opcode === 0x2 || $opcode === 0x1) {
@@ -374,7 +446,9 @@ final class EEBGWSession
             }
             $this->l('<- SHIP init');
             $this->phase = 'hello';
-            return $this->shipCtl(['connectionHello' => ['phase' => 'ready', 'waiting' => 60000]]);
+            // Server beantwortet das init des Clients (SHIP 13.4.3).
+            $antwort = $this->rolle === 'server' ? $this->frame("\x00\x00") : '';
+            return $antwort . $this->shipCtl(['connectionHello' => ['phase' => 'ready', 'waiting' => 60000]]);
         }
         if ($typ === 2) {
             return $this->phase === 'data' ? $this->onSpine($body, $jetzt) : '';
@@ -396,8 +470,11 @@ final class EEBGWSession
                 $this->helloOk = true;
                 $this->vertrauenAusstehend = false;
                 $this->phase = 'prot';
-                $out .= $this->shipCtl(['messageProtocolHandshake' => ['handshakeType' => 'announceMax',
-                    'version' => ['major' => 1, 'minor' => 0], 'formats' => ['format' => ['JSON-UTF8']]]]);
+                // Das Protokoll schlägt der Client vor (SHIP 13.4.4.2); der Server wartet darauf.
+                if ($this->rolle === 'client') {
+                    $out .= $this->shipCtl(['messageProtocolHandshake' => ['handshakeType' => 'announceMax',
+                        'version' => ['major' => 1, 'minor' => 0], 'formats' => ['format' => ['JSON-UTF8']]]]);
+                }
             } elseif ($ph === 'pending') {
                 if (!empty($h->prolongationRequest)) {
                     $out .= $this->shipCtl(['connectionHello' => ['phase' => 'ready', 'waiting' => 60000]]);
@@ -411,6 +488,21 @@ final class EEBGWSession
             }
         } elseif (isset($msg->messageProtocolHandshake)) {
             $mph = $msg->messageProtocolHandshake;
+            if (($mph->handshakeType ?? '') === 'announceMax' && $this->rolle === 'server') {
+                $fmt = $mph->formats->format ?? [];
+                if ((int)($mph->version->major ?? 0) !== 1 || !in_array('JSON-UTF8', (array)$fmt, true)) {
+                    $out .= $this->shipCtl(['messageProtocolHandshakeError' => ['error' => 2]]);
+                    $this->fehlerZustand('The remote device selected an unsupported SHIP protocol.');
+                    return $out;
+                }
+                return $out . $this->shipCtl(['messageProtocolHandshake' => ['handshakeType' => 'select',
+                    'version' => ['major' => 1, 'minor' => 0], 'formats' => ['format' => ['JSON-UTF8']]]]);
+            }
+            if (($mph->handshakeType ?? '') === 'select' && $this->rolle === 'server') {
+                // Bestätigung des Clients: weiter zur PIN-Phase.
+                $this->phase = 'pin';
+                return $out . $this->shipCtl(['connectionPinState' => ['pinState' => 'none']]);
+            }
             if (($mph->handshakeType ?? '') === 'select') {
                 $fmt = $mph->formats->format ?? [];
                 if ((int)($mph->version->major ?? 0) !== 1 || !in_array('JSON-UTF8', (array)$fmt, true)) {
