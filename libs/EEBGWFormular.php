@@ -25,6 +25,10 @@ trait EEBGWFormular
         '0.2.0' => [
             '• 🌍 New: the module is bilingual (German/English) and follows the language of the Symcon console.',
         ],
+        '0.3.0' => [
+            '• 🔗 New: pairing via the SHIP Pairing Service. The gateway shows its pairing data as text and QR code for the metering point operator; the control box then announces itself, and the gateway checks it and trusts it by itself - no address, port or SKI to enter.',
+            '• The “This gateway” section is now at the bottom with the actions.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';
@@ -164,6 +168,7 @@ trait EEBGWFormular
             'items' => [
                 ['type' => 'Label', 'caption' => $ver],
                 ['type' => 'Label', 'caption' => 'Setup in three steps: 1. Enter address and port of the remote device (see its manual or app). 2. Click “Check remote device” – the gateway fetches the certificate and shows the SKI. If it matches the SKI of the remote device, trust it. 3. Trust the SKI of this gateway in the remote device (app, web interface or with the grid operator).'],
+                ['type' => 'Label', 'caption' => 'If your metering point operator uses the SHIP Pairing Service, use “Pairing via the metering point operator” at the bottom instead: you hand over the QR code, and the gateway finds the control box by itself.'],
                 ['type' => 'Label', 'caption' => 'The SKI is the fingerprint of an EEBUS device. Each side must know the other side\'s SKI; only then can a connection be established.'],
                 ['type' => 'Label', 'caption' => 'The gateway connects to the remote device as a client. Devices that can only open the connection themselves are not yet supported in this version.'],
                 ['type' => 'Button', 'caption' => 'Manual on GitHub', 'onClick' => "echo '" . self::$EEBGW_REPO_URL . "';", 'link' => true],
@@ -246,7 +251,8 @@ trait EEBGWFormular
         $hidden = [];
         foreach ($layout as $key => $l) {
             $name = self::eebgwPanelName($fach[$key], (string)$key);
-            $rows[] = ['Key' => (string)$key, 'Panel' => $this->t($name), 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
+            $anzeige = $this->t($name) . (self::eebgwBereich($fach[$key]) === 'actions' ? $this->t(' (below, with the actions)') : '');
+            $rows[] = ['Key' => (string)$key, 'Panel' => $anzeige, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
                 'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
             if ($l['open'] === 'hidden') {
                 $hidden[] = trim((string)preg_replace('/^[^\p{L}\p{N}]+/u', '', $this->t($name)));
@@ -285,18 +291,27 @@ trait EEBGWFormular
         $rows = [];
         $i = 0;
         foreach ($this->eebgwFachpanels() as $key => $panel) {
-            $rows[] = ['Key' => (string)$key, 'Panel' => $this->t(self::eebgwPanelName($panel, (string)$key)), 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
+            $anzeige = $this->t(self::eebgwPanelName($panel, (string)$key)) . (self::eebgwBereich($panel) === 'actions' ? $this->t(' (below, with the actions)') : '');
+            $rows[] = ['Key' => (string)$key, 'Panel' => $anzeige, 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
         }
         $this->UpdateFormField('FormLayout', 'values', (string)json_encode($rows, JSON_UNESCAPED_UNICODE));
         return 'ℹ️ ' . $this->t('Set to default. Click “Apply” below to save.');
     }
 
+    /** Bereich eines Fachpanels: 'elements' (Standard) oder 'actions' (Felder ohne Eigenschaft). */
+    private static function eebgwBereich(array $panel): string
+    {
+        return ($panel['bereich'] ?? 'elements') === 'actions' ? 'actions' : 'elements';
+    }
+
     protected function eebgwBuildForm(array $fachpanels, array $actions, array $status): string
     {
         $layout = $this->eebgwFormLayout(array_keys($fachpanels));
-        $mitte = [];
+        $bereiche = ['elements' => [], 'actions' => []];
         foreach ($layout as $key => $l) {
             $panel = $fachpanels[$key];
+            $bereich = self::eebgwBereich($panel);
+            unset($panel['bereich']);
             if ($l['open'] === 'open') {
                 $panel['expanded'] = true;
             } elseif ($l['open'] === 'closed') {
@@ -305,13 +320,14 @@ trait EEBGWFormular
                 // Nicht weglassen: Felder bleiben im Formular, gespeicherte Werte bleiben beim „Übernehmen“ erhalten.
                 $panel['visible'] = false;
             }
-            $mitte[] = $panel;
+            // Die Position gilt innerhalb des jeweiligen Bereichs (SUITE.md 3a).
+            $bereiche[$bereich][] = $panel;
         }
         $elements = array_values(array_filter(array_merge(
             [$this->formPurposeIntro(), $this->formNewsBanner(), $this->formDocPanel()],
-            $mitte,
+            $bereiche['elements'],
             [$this->formLayoutPanel($layout, $fachpanels), $this->formForumHint(), $this->formLicenseHint()]
         )));
-        return (string)json_encode(['elements' => $elements, 'actions' => $actions, 'status' => $status]);
+        return (string)json_encode(['elements' => $elements, 'actions' => array_merge($bereiche['actions'], $actions), 'status' => $status]);
     }
 }

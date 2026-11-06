@@ -2,7 +2,7 @@
 /**
  * i18n-texte.php — sammelt alle übersetzbaren englischen Quelltexte aus dem Code.
  *
- * Erfasst: Argumente von t() und fest(), Werte von 'caption' => / 'confirm' =>, erste Argumente von
+ * Erfasst: Argumente von t() und fest(), Werte von 'caption'/'confirm'/'vorlage'/'grund' =>, erste Argumente von
  * EEBGWFehler(...) und fehlerZustand(...), die Zeilen von $EEBGW_NEWS_VERSIONS.
  * Nur Literale (dynamische Teile laufen über %s). Wird vom Prüfstand eingebunden;
  * direkt aufgerufen listet es fehlende und überzählige locale.json-Einträge.
@@ -40,7 +40,7 @@ function eebgwQuelltexte(string $wurzel): array
             if ($vor === '(' && is_array($vor2) && in_array($vor2[1], ['t', 'fest', 'EEBGWFehler', 'fehlerZustand'], true)) {
                 $nimm = true;
             }
-            if (is_array($vor) && $vor[0] === T_DOUBLE_ARROW && is_array($vor2) && in_array($vor2[1], ["'caption'", "'confirm'"], true) && $nach !== '.') {
+            if (is_array($vor) && $vor[0] === T_DOUBLE_ARROW && is_array($vor2) && in_array($vor2[1], ["'caption'", "'confirm'", "'vorlage'", "'grund'"], true) && $nach !== '.') {
                 $nimm = true;
             }
             if ($nimm && preg_match('/\p{L}/u', $wert)) {

@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.2.0-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.3.0-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -14,7 +14,7 @@ gateway holds the certificate and the pairing and establishes the encrypted conn
 happens with the values is decided by application modules attached as child instances (first of
 all **NRG-Stack SteuerboxHub**).
 
-> Version 0.2.0: early version, tested against the control box simulator `controlbox` from
+> Version 0.3.0: early version, tested against the control box simulator `controlbox` from
 > [eebus-go](https://github.com/enbility/eebus-go). Not yet tested with a real control box.
 
 ## Setup
@@ -26,6 +26,17 @@ all **NRG-Stack SteuerboxHub**).
    beforehand; then only this exact device is accepted.
 4. Trust the **SKI of this gateway** (shown in the form) in the remote device.
 5. Create the application module (e.g. SteuerboxHub) as a child instance.
+
+### Alternative: pairing via the metering point operator (SHIP Pairing Service)
+
+Some metering point operators pair control box and energy management via the SHIP Pairing Service:
+
+1. At the bottom of the form under "This gateway" → "Pairing via the metering point operator", click
+   "Prepare pairing and wait for the remote device".
+2. Give the pairing data shown (QR code or text) to the metering point operator or installer. They
+   contain a secret - only pass them there.
+3. As soon as the control box announces itself in the home network, the gateway checks its proof and
+   trusts it by itself, including its address. A DNS-SD instance in Symcon is required (default).
 
 ## What the gateway does
 
@@ -43,7 +54,7 @@ all **NRG-Stack SteuerboxHub**).
 - Client role only: the gateway connects to the remote device. Devices that can only open the
   connection themselves are not supported yet (Symcon's server socket cannot require a client
   certificate).
-- No device discovery via mDNS (`_ship._tcp`); address and port are entered manually.
+- Without the SHIP Pairing Service, address and port are entered manually (no general device discovery).
 - No PIN pairing.
 
 ## For developers of application modules
@@ -60,6 +71,8 @@ Interface between gateway and child: [.docs/kind-schnittstelle.md](.docs/kind-sc
 | `EEBGW_GegenstelleUebernehmen(int $id)` | Text: trust the SKI checked last |
 | `EEBGW_NeuVerbinden(int $id)` | Text: re-establish the connection |
 | `EEBGW_ZertifikatErneuern(int $id)` | Text: new own certificate (new SKI!) |
+| `EEBGW_PairingStarten(int $id)` | Text: create pairing data, wait for the remote device |
+| `EEBGW_PairingBeenden(int $id)` | Text: stop waiting |
 | `EEBGW_ResetFormLayout(int $id)` | Text: reset "Form: layout" to default in the open form |
 | `EEBGW_GetState(int $id)` | JSON: connection state (`contractVersion` 1.0) |
 

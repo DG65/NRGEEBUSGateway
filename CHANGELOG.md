@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 (Build 6, 06.11.2026)
+
+- 🔗 Neu: Kopplung über den **SHIP Pairing Service**. Das Gateway erzeugt ein Kopplungsgeheimnis und zeigt
+  seine Kopplungsdaten (SKI, SHIP-ID, SHA-256-Fingerabdruck, Geheimnis) als Text und QR-Code für den
+  Messstellenbetreiber. Meldet sich die Steuerbox danach per mDNS (`_shippairing._tcp`), prüft das Gateway
+  den HMAC-Nachweis, sucht ihren SHIP-Dienst, vergleicht den Zertifikats-Fingerabdruck und übernimmt sie
+  samt Adresse - ohne Eingabe von Adresse, Port oder SKI. Wiederholungsschutz über die zuletzt
+  angenommenen Nachweise. Geprüft mit den Testwerten aus Anhang A der Spezifikation und live gegen
+  eebus-go controlbox im Ankündiger-Modus.
+- Suche über Symcons DNS-SD-Instanz (alle 30 s, solange auf die Gegenstelle gewartet wird).
+- Eigener QR-Code-Erzeuger (Byte-Modus, Stufe M, Versionen 1-20), gegengeprüft mit zbar.
+- Der Bereich „Dieses Gateway“ steht jetzt im Aktionsbereich (Felder ohne Eigenschaft), „Formular: Aufbau“
+  steuert ihn mit.
+
 ## 0.2.0 (Build 5, 05.11.2026)
 
 - 🌍 Neu: zweisprachig Deutsch/Englisch (Formular, Meldungen, Variablennamen, Einträge im Meldungsprotokoll); folgt der Sprache

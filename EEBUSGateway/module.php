@@ -6,6 +6,8 @@ require_once __DIR__ . '/../libs/EEBGWJson.php';
 require_once __DIR__ . '/../libs/EEBGWCert.php';
 require_once __DIR__ . '/../libs/EEBGWSession.php';
 require_once __DIR__ . '/../libs/EEBGWFormular.php';
+require_once __DIR__ . '/../libs/EEBGWPairing.php';
+require_once __DIR__ . '/../libs/EEBGWQr.php';
 
 // ===========================================================================
 // NRG-Stack EEBUSGateway
@@ -26,6 +28,8 @@ class EEBUSGateway extends IPSModule
     use EEBGWFormular;
 
     private const CLIENT_SOCKET = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
+    private const DNSSD = '{780B2D48-916C-4D59-AD35-5A429B2355A5}';
+    private const PAIRING_TAKT_MS = 30000;
     private const DATA_ZUM_IO = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
     private const DATA_ZUM_GATEWAY = '{26D4DA14-6C0D-4686-AE00-D23234BAD90D}';
     private const DATA_ZUM_KIND = '{12D8B8A8-3EE7-491F-A68A-D632304165D4}';
@@ -64,6 +68,11 @@ class EEBUSGateway extends IPSModule
         $this->RegisterAttributeString('Anmeldungen', '{}');
         $this->RegisterAttributeString('Daten', '{}');
         $this->RegisterAttributeString('Stand', '{}');
+        // SHIP Pairing Service: Geheimnis, Verlauf angenommener Nachweise, Suchstand, gefundene Adresse.
+        $this->RegisterAttributeString('PairingGeheimnis', '');
+        $this->RegisterAttributeString('PairingVerlauf', '[]');
+        $this->RegisterAttributeString('PairingStand', '{}');
+        $this->RegisterAttributeString('PairingZiel', '{}');
         $this->RegisterAttributeInteger('Eltern', 0);
         $this->registerFormAttributes();
 
@@ -71,6 +80,7 @@ class EEBUSGateway extends IPSModule
         // RequireParent legt den Client Socket nicht zuverlässig an (live 27.10.2026, wie RoboHub 0.4.2):
         // fehlt er nach 15 s noch, legt das Gateway ihn selbst an (VerbindungPruefen).
         $this->RegisterTimer('Verbindung', 0, 'EEBGW_VerbindungPruefen($_IPS[\'TARGET\']);');
+        $this->RegisterTimer('Pairing', 0, 'EEBGW_PairingSuchen($_IPS[\'TARGET\']);');
         $this->RequireParent(self::CLIENT_SOCKET);
     }
 
@@ -92,6 +102,8 @@ class EEBUSGateway extends IPSModule
         $this->elternBeobachten();
         $this->elternKonfigurieren();
         $this->SetTimerInterval('Takt', $this->ReadPropertyBoolean('Aktiv') ? self::TAKT_MS : 0);
+        $pairing = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
+        $this->SetTimerInterval('Pairing', !empty($pairing['aktiv']) ? self::PAIRING_TAKT_MS : 0);
         $this->SetBuffer('AktivSeit', (string)time());
         $this->statusAktualisieren();
     }
@@ -199,6 +211,195 @@ class EEBUSGateway extends IPSModule
         $this->statusAktualisieren();
     }
 
+    // ------------------------------------------------------------------
+    // SHIP Pairing Service (Kopplung über den Messstellenbetreiber)
+    // ------------------------------------------------------------------
+
+    /** Kopplungsdaten dieses Gateways: SKI, SHIP-ID, Fingerabdruck, Geheimnis, Text für den QR-Code. */
+    private function pairingDaten(): array
+    {
+        $geheimnis = $this->ReadAttributeString('PairingGeheimnis');
+        $fp = EEBGWPairing::fingerabdruck($this->ReadAttributeString('Zertifikat'));
+        $ski = $this->ReadAttributeString('EigenerSki');
+        return ['ski' => $ski, 'shipId' => $this->eigeneShipId(), 'fingerabdruck' => $fp, 'geheimnis' => $geheimnis,
+            'text' => $geheimnis === '' ? '' : EEBGWPairing::qrText($ski, $this->eigeneShipId(), $fp, $geheimnis)];
+    }
+
+    /** QR-Code der Kopplungsdaten als PNG (data:-URI), leer ohne Geheimnis oder ohne GD. */
+    private function pairingQr(string $text): string
+    {
+        if ($text === '' || !function_exists('imagepng')) {
+            return '';
+        }
+        try {
+            return EEBGWQr::pngDataUri($text, 4);
+        } catch (Throwable $e) {
+            $this->SendDebug('Pairing', 'QR: ' . $e->getMessage(), 0);
+            return '';
+        }
+    }
+
+    /**
+     * EEBGW_PairingStarten($id): string — Geheimnis erzeugen (falls noch keins) und auf die
+     * Ankündigung der Gegenstelle warten. Die Daten gibt der Nutzer an den Messstellenbetreiber.
+     */
+    public function PairingStarten(): string
+    {
+        $this->zertifikatSicherstellen();
+        if ($this->ReadAttributeString('PairingGeheimnis') === '') {
+            $this->WriteAttributeString('PairingGeheimnis', EEBGWPairing::neuesGeheimnis());
+        }
+        $this->pairingStandSetzen(['aktiv' => true, 'seit' => time(), 'trustId' => '', 'trustPar' => '',
+            'vorlage' => 'Waiting for the remote device to announce itself (SHIP Pairing Service).', 'werte' => []]);
+        $this->SetTimerInterval('Pairing', self::PAIRING_TAKT_MS);
+        $d = $this->pairingDaten();
+        $this->UpdateFormField('PairingDaten', 'value', $d['text']);
+        $this->UpdateFormField('PairingQr', 'image', $this->pairingQr($d['text']));
+        $this->UpdateFormField('PairingQr', 'visible', true);
+        $this->UpdateFormField('PairingGeheimnisFeld', 'value', $d['geheimnis']);
+        $this->UpdateFormField('PairingZeile', 'caption', $this->pairingZeile());
+        return '✅ ' . $this->t('The gateway is now waiting for the remote device.') . "\n"
+            . $this->t('Give these pairing data to your metering point operator (or the installer of the device):') . "\n" . $d['text'];
+    }
+
+    /** EEBGW_PairingBeenden($id): string — nicht mehr auf eine Ankündigung warten. */
+    public function PairingBeenden(): string
+    {
+        $this->pairingStandSetzen(['aktiv' => false, 'vorlage' => 'Waiting stopped.', 'werte' => []]);
+        $this->SetTimerInterval('Pairing', 0);
+        $this->UpdateFormField('PairingZeile', 'caption', $this->pairingZeile());
+        return 'ℹ️ ' . $this->t('The gateway no longer waits for a pairing announcement.');
+    }
+
+    private function pairingStandSetzen(array $werte): void
+    {
+        $stand = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
+        $this->WriteAttributeString('PairingStand', (string)json_encode(array_merge($stand, $werte)));
+    }
+
+    private function pairingZeile(): string
+    {
+        $stand = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
+        if (empty($stand['vorlage'])) {
+            return 'ℹ️ ' . $this->t('Pairing via the SHIP Pairing Service has not been prepared yet.');
+        }
+        $zeichen = !empty($stand['gekoppelt']) ? '✅ ' : (!empty($stand['aktiv']) ? '⏳ ' : 'ℹ️ ');
+        $text = $this->t((string)$stand['vorlage'], ...array_map('strval', (array)($stand['werte'] ?? [])));
+        return $zeichen . $text . (!empty($stand['zuletzt']) ? ' ' . $this->t('(last search %s)', date($this->t('H:i:s'), (int)$stand['zuletzt'])) : '');
+    }
+
+    private function dnssdInstanz(): int
+    {
+        $liste = function_exists('IPS_GetInstanceListByModuleID') ? IPS_GetInstanceListByModuleID(self::DNSSD) : [];
+        return (int)($liste[0] ?? 0);
+    }
+
+    /** DNS-SD-Abfrage: alle Ankündigungen eines Diensttyps mit Host, Port, IPv4 und TXT. */
+    private function dnssdSuchen(int $dnssd, string $typ): array
+    {
+        $out = [];
+        try {
+            foreach ((array)ZC_QueryServiceType($dnssd, $typ, '') as $e) {
+                foreach ((array)ZC_QueryService($dnssd, (string)$e['Name'], (string)$e['Type'], (string)$e['Domain']) as $d) {
+                    $out[] = $d;
+                }
+            }
+        } catch (Throwable $ex) {
+            $this->SendDebug('Pairing', 'DNS-SD: ' . $ex->getMessage(), 0);
+        }
+        return $out;
+    }
+
+    /** Timer: Ankündigungen der Gegenstelle suchen, Nachweis prüfen, danach koppeln. */
+    public function PairingSuchen(): void
+    {
+        $stand = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
+        if (empty($stand['aktiv'])) {
+            $this->SetTimerInterval('Pairing', 0);
+            return;
+        }
+        $dnssd = $this->dnssdInstanz();
+        if ($dnssd === 0 || !function_exists('ZC_QueryServiceType')) {
+            $this->pairingStandSetzen(['vorlage' => 'No DNS-SD instance found in Symcon; the gateway cannot search for the remote device.', 'werte' => [], 'zuletzt' => time()]);
+            return;
+        }
+        $d = $this->pairingDaten();
+        $trustId = (string)($stand['trustId'] ?? '');
+        $trustPar = (string)($stand['trustPar'] ?? '');
+        if ($trustId === '') {
+            $verlauf = json_decode($this->ReadAttributeString('PairingVerlauf'), true) ?: [];
+            $grund = '';
+            foreach ($this->dnssdSuchen($dnssd, '_shippairing._tcp') as $eintrag) {
+                $txt = EEBGWPairing::txtNormalisieren((array)($eintrag['TXTRecords'] ?? []));
+                if ($txt['forId'] !== $d['shipId']) {
+                    continue;   // gilt einem anderen Gerät
+                }
+                $p = EEBGWPairing::pruefen($txt, $d['geheimnis'], $d['shipId'], $d['fingerabdruck'], $verlauf);
+                if (!$p['ok']) {
+                    // Nur bei neuem Grund protokollieren, nicht alle 30 s dasselbe.
+                    if (($stand['vorlage'] ?? '') !== $p['grund']) {
+                        $this->LogMessage($this->t('Pairing announcement rejected: %s', $this->t($p['grund'])), KL_WARNING);
+                    }
+                    $grund = $p['grund'];
+                    continue;
+                }
+                $verlauf[] = strtoupper($txt['digest']);
+                $this->WriteAttributeString('PairingVerlauf', (string)json_encode(array_slice($verlauf, -EEBGWPairing::VERLAUF)));
+                $trustId = $txt['trustId'];
+                $trustPar = strtoupper($txt['trustPar']);
+                $this->pairingStandSetzen(['trustId' => $trustId, 'trustPar' => $trustPar]);
+                $this->LogMessage($this->t('Pairing proof of %s is valid.', $trustId), KL_MESSAGE);
+                break;
+            }
+            if ($trustId === '') {
+                $this->pairingStandSetzen(['vorlage' => $grund !== '' ? $grund : 'Waiting for the remote device to announce itself (SHIP Pairing Service).', 'werte' => [], 'zuletzt' => time()]);
+                return;
+            }
+        }
+        // Gültig: die SHIP-Ankündigung derselben Gegenstelle suchen und dorthin verbinden.
+        $host = '';
+        $port = 0;
+        foreach ($this->dnssdSuchen($dnssd, '_ship._tcp') as $eintrag) {
+            $txt = [];
+            foreach ((array)($eintrag['TXTRecords'] ?? []) as $zeile) {
+                if (strpos((string)$zeile, '=') !== false) {
+                    [$k, $v] = explode('=', (string)$zeile, 2);
+                    $txt[strtolower($k)] = $v;
+                }
+            }
+            if (($txt['id'] ?? '') === $trustId) {
+                $host = (string)(((array)($eintrag['IPv4'] ?? []))[0] ?? ($eintrag['Host'] ?? ''));
+                $port = (int)($eintrag['Port'] ?? 0);
+                break;
+            }
+        }
+        if ($host === '' || $port <= 0) {
+            $this->pairingStandSetzen(['vorlage' => 'Pairing proof valid; waiting for the SHIP service of %s.', 'werte' => [$trustId], 'zuletzt' => time()]);
+            return;
+        }
+        try {
+            $g = EEBGWCert::gegenstelleAbholen($host, $port, $this->ReadAttributeString('Zertifikat'), $this->ReadAttributeString('Schluessel'));
+        } catch (Throwable $e) {
+            $this->pairingStandSetzen(['vorlage' => 'Remote device found at %s, but not reachable: %s', 'werte' => [$host . ':' . $port, $this->fehlerText($e)], 'zuletzt' => time()]);
+            return;
+        }
+        if (EEBGWPairing::fingerabdruck($g['cert']) !== $trustPar) {
+            $this->pairingStandSetzen(['vorlage' => 'The certificate at %s does not match the pairing announcement; not trusted.', 'werte' => [$host . ':' . $port], 'zuletzt' => time()]);
+            $this->LogMessage($this->t('The certificate at %s does not match the pairing announcement; not trusted.', $host . ':' . $port), KL_WARNING);
+            return;
+        }
+        $erwartet = EEBGWCert::normalisieren((string)$this->ReadPropertyString('ErwarteterSki'));
+        if ($erwartet !== '' && $erwartet !== $g['ski']) {
+            $this->pairingStandSetzen(['vorlage' => 'The paired device has a different SKI than the one entered (%s).', 'werte' => [EEBGWCert::lesbar($g['ski'])], 'zuletzt' => time()]);
+            return;
+        }
+        $this->WriteAttributeString('PairingZiel', (string)json_encode(['host' => $host, 'port' => $port, 'shipId' => $trustId]));
+        $this->pairingStandSetzen(['aktiv' => false, 'gekoppelt' => time(), 'vorlage' => 'Paired with %s at %s.', 'werte' => [$trustId, $host . ':' . $port], 'zuletzt' => time()]);
+        $this->SetTimerInterval('Pairing', 0);
+        $this->LogMessage($this->t('Paired with %s at %s.', $trustId, $host . ':' . $port), KL_MESSAGE);
+        $this->gegenstelleFestlegen($g);
+    }
+
     /**
      * EEBGW_ZertifikatErneuern($id): string — neues eigenes Zertifikat. Danach muss der neue
      * SKI in der Gegenstelle erneut freigegeben werden.
@@ -242,6 +443,33 @@ class EEBUSGateway extends IPSModule
         return $e instanceof EEBGWFehler ? $this->t($e->vorlage, ...$e->werte) : $e->getMessage();
     }
 
+    /** Adresse der Gegenstelle: Eingabe im Formular, sonst die per Pairing gefundene. */
+    private function zielHost(): string
+    {
+        $host = trim((string)$this->ReadPropertyString('Host'));
+        if ($host !== '') {
+            return $host;
+        }
+        $ziel = json_decode($this->ReadAttributeString('PairingZiel'), true) ?: [];
+        return (string)($ziel['host'] ?? '');
+    }
+
+    private function zielPort(): int
+    {
+        $port = (int)$this->ReadPropertyInteger('Port');
+        if ($port > 0 && trim((string)$this->ReadPropertyString('Host')) !== '') {
+            return $port;
+        }
+        $ziel = json_decode($this->ReadAttributeString('PairingZiel'), true) ?: [];
+        return (int)($ziel['port'] ?? ($port > 0 ? $port : 0));
+    }
+
+    /** SHIP-ID dieses Gateways (aus dem SKI, damit stabil). */
+    private function eigeneShipId(): string
+    {
+        return 'NRG-Stack-EEBUSGateway-' . substr($this->ReadAttributeString('EigenerSki'), 0, 12);
+    }
+
     private function elternID(): int
     {
         return (int)(IPS_GetInstance($this->InstanceID)['ConnectionID'] ?? 0);
@@ -267,14 +495,14 @@ class EEBUSGateway extends IPSModule
         if ($eltern === 0 || IPS_GetInstance($eltern)['ModuleInfo']['ModuleID'] !== self::CLIENT_SOCKET) {
             return;
         }
-        $bereit = $this->ReadPropertyBoolean('Aktiv') && trim((string)$this->ReadPropertyString('Host')) !== ''
-            && $this->ReadPropertyInteger('Port') > 0 && $this->ReadAttributeString('GegenstelleZertifikat') !== ''
+        $bereit = $this->ReadPropertyBoolean('Aktiv') && $this->zielHost() !== ''
+            && $this->zielPort() > 0 && $this->ReadAttributeString('GegenstelleZertifikat') !== ''
             && $this->ReadAttributeString('Zertifikat') !== '';
         $soll = ['Open' => $bereit];
         if ($bereit) {
             $soll += [
-                'Host' => trim((string)$this->ReadPropertyString('Host')),
-                'Port' => (int)$this->ReadPropertyInteger('Port'),
+                'Host' => $this->zielHost(),
+                'Port' => $this->zielPort(),
                 'UseSSL' => true,
                 'UseCertificate' => true,
                 // Symcon erwartet die PEM-Dateien Base64-kodiert (im Prototyp live geprüft).
@@ -329,9 +557,9 @@ class EEBUSGateway extends IPSModule
             $s = new EEBGWSession();
         }
         $ski = $this->ReadAttributeString('EigenerSki');
-        $s->host = trim((string)$this->ReadPropertyString('Host'));
-        $s->port = (int)$this->ReadPropertyInteger('Port');
-        $s->localShipId = 'NRG-Stack-EEBUSGateway-' . substr($ski, 0, 12);
+        $s->host = $this->zielHost();
+        $s->port = $this->zielPort();
+        $s->localShipId = $this->eigeneShipId();
         $s->localDevice = 'd:_n:NRG-Stack_EEBUSGateway-' . substr($ski, 0, 12);
         $s->model = EEBGWSession::buildModel(json_decode($this->ReadAttributeString('Anmeldungen'), true) ?: []);
         $s->data = json_decode($this->ReadAttributeString('Daten'), true) ?: [];
@@ -520,7 +748,7 @@ class EEBUSGateway extends IPSModule
             $this->SetStatus(104);
             return;
         }
-        if (trim((string)$this->ReadPropertyString('Host')) === '' || $this->ReadPropertyInteger('Port') <= 0
+        if ($this->zielHost() === '' || $this->zielPort() <= 0
             || $this->ReadAttributeString('GegenstelleZertifikat') === '') {
             $this->SetStatus(104);
             return;
@@ -734,11 +962,30 @@ class EEBUSGateway extends IPSModule
             ],
         ];
 
+        $pd = $this->pairingDaten();
+        $pairingStand = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
+        // Felder ohne Eigenschaft gehören in den Aktionsbereich (IRHub-Befund); „Formular: Aufbau“ steuert ihn mit.
         $gateway = [
-            'type' => 'ExpansionPanel', 'expanded' => $gegenSki !== '' && ($st['phase'] ?? '') !== 'data', 'caption' => '🪪  This gateway',
+            'type' => 'ExpansionPanel', 'bereich' => 'actions',
+            'expanded' => ($gegenSki !== '' && ($st['phase'] ?? '') !== 'data') || !empty($pairingStand['aktiv']), 'caption' => '🪪  This gateway',
             'items' => [
-                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI of this gateway (trust it in the remote device)', 'value' => EEBGWCert::lesbar($eigenerSki), 'enabled' => false, 'width' => '520px'],
+                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI of this gateway (trust it in the remote device)', 'value' => EEBGWCert::lesbar($eigenerSki), 'width' => '520px'],
                 ['type' => 'Label', 'caption' => 'Enter or confirm this SKI in the remote device (app, web interface or with the grid operator, depending on the device).'],
+                [
+                    'type' => 'ExpansionPanel', 'expanded' => !empty($pairingStand['aktiv']), 'caption' => '🔗  Pairing via the metering point operator (SHIP Pairing Service)',
+                    'items' => [
+                        ['type' => 'Label', 'caption' => 'Some metering point operators pair the control box with the energy management via the SHIP Pairing Service: you give them the pairing data of this gateway, they enter it into the control box. The control box then announces itself in the home network, and the gateway finds and trusts it by itself - address, port and SKI no longer need to be entered.'],
+                        ['type' => 'Button', 'caption' => 'Prepare pairing and wait for the remote device', 'onClick' => 'echo EEBGW_PairingStarten($id);'],
+                        ['type' => 'Image', 'name' => 'PairingQr', 'image' => $this->pairingQr($pd['text']), 'visible' => $pd['text'] !== ''],
+                        ['type' => 'ValidationTextBox', 'name' => 'PairingDaten', 'caption' => 'Pairing data (text for the QR code)', 'value' => $pd['text'], 'width' => '900px'],
+                        ['type' => 'ValidationTextBox', 'name' => 'PairingShipId', 'caption' => 'SHIP ID of this gateway', 'value' => $pd['shipId'], 'width' => '520px'],
+                        ['type' => 'ValidationTextBox', 'name' => 'PairingFingerabdruck', 'caption' => 'Certificate fingerprint (SHA-256)', 'value' => $pd['fingerabdruck'], 'width' => '900px'],
+                        ['type' => 'ValidationTextBox', 'name' => 'PairingGeheimnisFeld', 'caption' => 'Pairing secret', 'value' => $pd['geheimnis'], 'width' => '520px'],
+                        ['type' => 'Label', 'caption' => 'The pairing data contain a secret. Only pass them to your metering point operator or the installer.'],
+                        ['type' => 'Label', 'name' => 'PairingZeile', 'caption' => $this->pairingZeile(), 'color' => !empty($pairingStand['gekoppelt']) ? 0x2E8B3D : -1],
+                        ['type' => 'Button', 'caption' => 'Stop waiting', 'onClick' => 'echo EEBGW_PairingBeenden($id);'],
+                    ],
+                ],
                 [
                     'type' => 'ExpansionPanel', 'expanded' => false, 'caption' => 'Create a new certificate',
                     'items' => [

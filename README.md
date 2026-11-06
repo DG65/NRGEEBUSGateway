@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.2.0-blue.svg)](library.json)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.3.0-blue.svg)](library.json)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Spenden-blue.svg)](https://paypal.me/DietmarGureth)
@@ -13,7 +13,7 @@ Steuerbox des Netzbetreibers nach § 14a EnWG. Das Gateway hält Zertifikat und 
 verschlüsselte Verbindung auf. Was mit den Werten geschieht, entscheiden Fachmodule, die als
 Kind-Instanzen am Gateway hängen (zuerst **NRG-Stack SteuerboxHub**).
 
-> Stand 0.2.0: frühe Fassung, geprüft gegen den Steuerbox-Simulator `controlbox` aus
+> Stand 0.3.0: frühe Fassung, geprüft gegen den Steuerbox-Simulator `controlbox` aus
 > [eebus-go](https://github.com/enbility/eebus-go). Mit echter Steuerbox noch nicht getestet.
 
 ## Einrichtung
@@ -25,6 +25,17 @@ Kind-Instanzen am Gateway hängen (zuerst **NRG-Stack SteuerboxHub**).
    Alternativ den SKI vorher eintragen, dann wird nur genau dieses Gerät akzeptiert.
 4. Den **SKI dieses Gateways** (steht im Formular) in der Gegenstelle freigeben.
 5. Fachmodul (z. B. SteuerboxHub) als Kind-Instanz anlegen.
+
+### Alternativ: Kopplung über den Messstellenbetreiber (SHIP Pairing Service)
+
+Manche Messstellenbetreiber koppeln Steuerbox und Energiemanagement über den SHIP Pairing Service:
+
+1. Unten im Formular unter „Dieses Gateway“ → „Kopplung über den Messstellenbetreiber“ auf
+   „Kopplung vorbereiten und auf die Gegenstelle warten“ klicken.
+2. Die angezeigten Kopplungsdaten (QR-Code oder Text) an den Messstellenbetreiber bzw. Installateur geben.
+   Sie enthalten ein Geheimnis - nur dorthin weitergeben.
+3. Sobald die Steuerbox sich im Heimnetz meldet, prüft das Gateway ihren Nachweis und übernimmt sie
+   selbst, samt Adresse. Voraussetzung ist eine DNS-SD-Instanz in Symcon (Standard).
 
 ## Was das Gateway tut
 
@@ -41,7 +52,7 @@ Kind-Instanzen am Gateway hängen (zuerst **NRG-Stack SteuerboxHub**).
 
 - Nur Client-Rolle: Das Gateway verbindet sich zur Gegenstelle. Geräte, die ausschließlich selbst
   verbinden wollen, gehen noch nicht (Symcons Server Socket kann kein Client-Zertifikat verlangen).
-- Keine Gerätesuche per mDNS (`_ship._tcp`); Adresse und Port von Hand.
+- Ohne SHIP Pairing Service werden Adresse und Port von Hand eingetragen (keine allgemeine Gerätesuche).
 - Keine PIN-Kopplung.
 
 ## Für Entwickler von Fachmodulen
@@ -58,6 +69,8 @@ gegen eebus-go controlbox.
 | `EEBGW_GegenstelleUebernehmen(int $id)` | Text: zuletzt geprüften SKI festlegen |
 | `EEBGW_NeuVerbinden(int $id)` | Text: Verbindung neu aufbauen |
 | `EEBGW_ZertifikatErneuern(int $id)` | Text: neues eigenes Zertifikat (neuer SKI!) |
+| `EEBGW_PairingStarten(int $id)` | Text: Kopplungsdaten erzeugen, auf die Gegenstelle warten |
+| `EEBGW_PairingBeenden(int $id)` | Text: nicht mehr warten |
 | `EEBGW_ResetFormLayout(int $id)` | Text: „Formular: Aufbau“ im offenen Formular auf Standard |
 | `EEBGW_GetState(int $id)` | JSON: Verbindungszustand (`contractVersion` 1.0) |
 

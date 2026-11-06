@@ -91,6 +91,19 @@ function IPS_CreateInstance(string $guid): int { $id = 20000 + count($GLOBALS['I
 function IPS_ConnectInstance(int $id, int $parent): bool { $GLOBALS['INST'][$id]->parentId = $parent; return true; }
 function IPS_DeleteInstance(int $id): bool { unset($GLOBALS['INST'][$id]); return true; }
 function IPS_SetName(int $id, string $n): bool { $GLOBALS['INST'][$id]->name = $n; return true; }
+// Nachgebildete DNS-SD-Instanz: $GLOBALS['MDNS'][Typ] = Liste von ZC_QueryService-Ergebnissen.
+$GLOBALS['MDNS'] = [];
+function IPS_GetInstanceListByModuleID(string $g): array { return $g === '{780B2D48-916C-4D59-AD35-5A429B2355A5}' ? [99001] : []; }
+function ZC_QueryServiceType(int $id, string $typ, string $dom): array
+{
+    if (isset($GLOBALS['MDNS_LIVE'])) { return mdnsLiveTypen($typ); }
+    return array_map(function ($e) use ($typ) { return ['Name' => $e['Name'], 'Type' => $typ, 'Domain' => 'local']; }, $GLOBALS['MDNS'][$typ] ?? []);
+}
+function ZC_QueryService(int $id, string $name, string $typ, string $dom): array
+{
+    if (isset($GLOBALS['MDNS_LIVE'])) { return mdnsLiveDienst($name, $typ); }
+    return array_values(array_filter($GLOBALS['MDNS'][$typ] ?? [], function ($e) use ($name) { return $e['Name'] === $name; }));
+}
 function IPS_GetLibrary(string $guid): array { $l = json_decode(file_get_contents(dirname(__DIR__) . '/library.json'), true); return ['Version' => $l['version'], 'Build' => $l['build']]; }
 
 class IPSModule
@@ -307,7 +320,7 @@ pruefe(strpos($flach, 'SteuerboxHub (Test)') !== false, 'Formular: angemeldetes 
 $captions = function (EEBUSGateway $gw) {
     $f = formular($gw);
     $out = [];
-    foreach ($f['elements'] as $e) {
+    foreach (array_merge($f['elements'], $f['actions']) as $e) {
         $out[] = [$e['caption'] ?? '', $e['expanded'] ?? null, $e['visible'] ?? true];
     }
     return $out;
@@ -323,7 +336,10 @@ $gw->props['FormLayout'] = json_encode([
 ]);
 $c = $captions($gw);
 $byName = []; foreach ($c as $i => $x) { $byName[$x[0]] = [$i, $x[1], $x[2]]; }
-pruefe($byName['📡  Zustand'][0] < $byName['🪪  Dieses Gateway'][0] && $byName['🪪  Dieses Gateway'][0] < $byName['🔌  Gegenstelle'][0], 'Aufbau: Reihenfolge nach Position');
+pruefe($byName['📡  Zustand'][0] < $byName['🔌  Gegenstelle'][0], 'Aufbau: Reihenfolge nach Position (innerhalb der Elemente)');
+$fRoh = formular($gw);
+pruefe(in_array('🪪  Dieses Gateway', array_column($fRoh['actions'], 'caption'), true) && !in_array('🪪  Dieses Gateway', array_column($fRoh['elements'], 'caption'), true)
+    && strpos(json_encode($fRoh, JSON_UNESCAPED_UNICODE), '"bereich"') === false, 'Aufbau: „Dieses Gateway“ im Aktionsbereich, Bereichsmerker nicht im Formular');
 pruefe($byName['📡  Zustand'][1] === true && $byName['🔌  Gegenstelle'][1] === false, 'Aufbau: Aufgeklappt/Zugeklappt, Zugeklappt hat Vorrang');
 pruefe($byName['🪪  Dieses Gateway'][2] === false, 'Aufbau: Ausgeblendet = visible:false, Panel bleibt im Formular');
 pruefe(isset($byName['🪟  Formular: Aufbau (1 ausgeblendet)']), 'Aufbau: Caption nennt die Zahl ausgeblendeter Bereiche; unbekannter Schlüssel ignoriert');
@@ -339,6 +355,67 @@ $gw->props['FormLayout'] = '[]';
 pruefe(strpos(file_get_contents(dirname(__DIR__) . '/EEBUSGateway/module.php'), 'IPS_LogMessage') === false, 'Logging nur über $this->LogMessage (Store-Checkliste 15)');
 
 // ---------------------------------------------------------------------------
+// SHIP Pairing Service
+require_once dirname(__DIR__) . '/libs/EEBGWPairing.php';
+$annex = EEBGWPairing::txtNormalisieren(['txtvers' => '1', 'parType' => 'fpSha256', 'forId' => 'i:983327_u:C8277H008F-3',
+    'forPar' => 'C74B7855D3479415F62CC01E5F6D9A93EBC676057D85417ADA16FD1384338943', 'trustId' => 'i:46925_u:43652bk-2-gt1',
+    'trustPar' => '2CC72E781F7A7D2A08D50196C50FEDF0F7BA583F43F76C8C0DDEC9EEF0D005B4', 'trustCurve' => 'secp256r1', 'type' => 'addCu',
+    'trustNonce' => 'BDCEE427FA7208DF3C1F2A749BA6F4D4', 'alg' => 'hmacSha256', 'digest' => 'BCBB62B2176DA2CEE545784CEB1F2A55E049451B12A549C98E8CA213F001DA25']);
+$annexGeheimnis = '7A37DCF81BDB50F8E92CFA4160CCB3DE';
+pruefe(EEBGWPairing::digest($annexGeheimnis, $annex) === $annex['digest'], 'Pairing: HMAC = Testvektor Anhang A.3 der Spezifikation');
+$ok = EEBGWPairing::pruefen($annex, $annexGeheimnis, $annex['forId'], $annex['forPar'], []);
+pruefe($ok['ok'] === true, 'Pairing: gültige Ankündigung angenommen');
+pruefe(EEBGWPairing::pruefen($annex, 'FFFFDCF81BDB50F8E92CFA4160CCB3DE', $annex['forId'], $annex['forPar'], [])['ok'] === false, 'Pairing: falsches Geheimnis abgelehnt');
+pruefe(EEBGWPairing::pruefen($annex, $annexGeheimnis, 'andere-id', $annex['forPar'], [])['grund'] === 'Pairing announcement is meant for another device.', 'Pairing: fremde SHIP-ID abgelehnt');
+pruefe(EEBGWPairing::pruefen($annex, $annexGeheimnis, $annex['forId'], str_repeat('A', 64), [])['ok'] === false, 'Pairing: fremder Fingerabdruck abgelehnt');
+pruefe(EEBGWPairing::pruefen($annex, $annexGeheimnis, $annex['forId'], $annex['forPar'], [$annex['digest']])['grund'] === 'Pairing announcement was already used (replay).', 'Pairing: Wiederholung abgelehnt');
+pruefe(EEBGWPairing::txtNormalisieren(['TXTVERS=1', 'trustnonce=AB'])['trustNonce'] === 'AB', 'Pairing: TXT als k=v-Liste, Schlüssel ohne Rücksicht auf Groß-/Kleinschreibung');
+
+// Ablauf im Modul mit nachgebildeter DNS-SD-Instanz
+$pg = new EEBUSGateway(10200);
+$pg->parentId = 10001;
+$pg->Create();
+$pg->ApplyChanges();
+neueAnfrage($pg);
+$antwort = $pg->PairingStarten();
+$daten = json_decode((string)json_encode((new ReflectionMethod($pg, 'pairingDaten'))->invoke($pg)), true);
+pruefe(strpos($antwort, 'SHIP;SKI:' . $pg->attrs['EigenerSki']) !== false && strlen($daten['geheimnis']) === 32 && $pg->timers['Pairing'] === 30000,
+    'Pairing starten: Geheimnis, Kopplungsdaten, Suche alle 30 s');
+$qr = $pg->form['PairingQr']['image'] ?? '';
+$qrDatei = sys_get_temp_dir() . '/eebgw-qr.png';
+file_put_contents($qrDatei, (string)base64_decode(substr($qr, 22)));
+$gelesen = trim((string)shell_exec('zbarimg -q --raw -Sbinary ' . escapeshellarg($qrDatei) . ' 2>/dev/null'));
+if (trim((string)shell_exec('command -v zbarimg')) !== '') {
+    pruefe($gelesen === $daten['text'], 'Pairing: QR-Code im Formular liest zbarimg als Kopplungstext zurück');
+} else {
+    echo "  --   QR-Gegenprüfung übersprungen (zbarimg fehlt)\n";
+}
+pruefe(strpos($daten['text'], ';FPH256:' . EEBGWPairing::fingerabdruck($pg->attrs['Zertifikat']) . ';') !== false && strpos($daten['text'], ';ID:' . $daten['shipId'] . ';') !== false,
+    'Pairing: Kopplungstext trägt SHIP-ID und SHA-256-Fingerabdruck');
+$fremd = EEBGWCert::erzeugen('Steuerbox');
+$ank = ['txtvers' => '1', 'parType' => 'fpSha256', 'forId' => $daten['shipId'], 'forPar' => $daten['fingerabdruck'], 'trustId' => 'Test-Steuerbox-1',
+    'trustPar' => EEBGWPairing::fingerabdruck($fremd['cert']), 'trustCurve' => 'secp256r1', 'type' => 'addCu', 'trustNonce' => strtoupper(bin2hex(random_bytes(16))), 'alg' => 'hmacSha256'];
+$ank['digest'] = EEBGWPairing::digest('00' . substr($daten['geheimnis'], 2), $ank);
+$txtListe = function (array $a) { $o = []; foreach ($a as $k => $v) { $o[] = $k . '=' . $v; } return $o; };
+$GLOBALS['MDNS']['_shippairing._tcp'] = [['Name' => 'Steuerbox', 'Host' => 'box.local', 'Port' => 4712, 'TXTRecords' => $txtListe($ank), 'IPv4' => ['192.0.2.10'], 'IPv6' => []]];
+$pg->PairingSuchen();
+$stand = json_decode($pg->attrs['PairingStand'], true);
+pruefe($stand['vorlage'] === 'Pairing proof is wrong (secret does not match).' && $stand['trustId'] === '', 'Pairing-Suche: falscher Nachweis abgelehnt, nichts übernommen');
+$ank['digest'] = EEBGWPairing::digest($daten['geheimnis'], $ank);
+$GLOBALS['MDNS']['_shippairing._tcp'][0]['TXTRecords'] = $txtListe($ank);
+$pg->PairingSuchen();
+$stand = json_decode($pg->attrs['PairingStand'], true);
+pruefe($stand['trustId'] === 'Test-Steuerbox-1' && $stand['vorlage'] === 'Pairing proof valid; waiting for the SHIP service of %s.' && count(json_decode($pg->attrs['PairingVerlauf'], true)) === 1,
+    'Pairing-Suche: gültiger Nachweis gemerkt, wartet auf den SHIP-Dienst');
+neueAnfrage($pg);
+$GLOBALS['LANG'] = 'de';
+$fp = formular($pg);
+pruefe(strpos(json_encode($fp, JSON_UNESCAPED_UNICODE), 'Kopplungsnachweis gültig; warte auf den SHIP-Dienst von Test-Steuerbox-1') !== false, 'Formular: Pairing-Zustand sichtbar');
+neueAnfrage($pg);
+pruefe(strpos($pg->PairingBeenden(), 'wartet nicht mehr') !== false && $pg->timers['Pairing'] === 0, 'Pairing beenden: Suche aus');
+unset($GLOBALS['INST'][10200]);
+$GLOBALS['MDNS'] = [];
+
 // Zweisprachigkeit (SUITE.md Konventionen 9)
 require_once __DIR__ . '/i18n-texte.php';
 $quellen = eebgwQuelltexte(dirname(__DIR__));
@@ -461,6 +538,115 @@ if ($live !== false) {
         proc_terminate($proc);
         proc_close($proc);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Teil 3 (--live-pairing <controlbox> <cert> <key>): controlbox als Ankündiger (SHIP Pairing
+// Service) mit den Kopplungsdaten des Gateways. Das Gateway sucht per mDNS (macOS dns-sd),
+// prüft den HMAC der echten Go-Implementierung, übernimmt die Gegenstelle und verbindet sich –
+// ohne dass controlbox den SKI des Gateways kennt.
+$lp = array_search('--live-pairing', $argv, true);
+if ($lp !== false) {
+    [$bin, $cbCert, $cbKey] = array_slice($argv, $lp + 1, 3);
+    echo "\nTeil 3: SHIP Pairing Service live gegen controlbox\n";
+    $port = 4713;
+    $pgw = new EEBUSGateway(10300);
+    $psock = new FakeSocket(10301);
+    $pgw->parentId = 10301;
+    $pgw->Create();
+    $pgw->ApplyChanges();
+    neueAnfrage($pgw);
+    $pgw->PairingStarten();
+    $d = (new ReflectionMethod($pgw, 'pairingDaten'))->invoke($pgw);
+    $log = sys_get_temp_dir() . '/eebgw-controlbox-pairing.log';
+    $proc = proc_open([$bin, '-port', (string)$port, '-certpath', $cbCert, '-keypath', $cbKey, '-target', $d['text']], [1 => ['file', $log, 'w'], 2 => ['file', $log, 'a']], $pipes);
+    $GLOBALS['MDNS_LIVE'] = true;
+    try {
+        $ende = time() + 60;
+        do {
+            sleep(3);
+            neueAnfrage($pgw);
+            $pgw->PairingSuchen();
+            $stand = json_decode($pgw->attrs['PairingStand'], true);
+            echo '      … ' . vsprintf($stand['vorlage'], $stand['werte'] ?? []) . "\n";
+        } while (empty($stand['gekoppelt']) && time() < $ende);
+        pruefe(!empty($stand['gekoppelt']), 'Pairing: HMAC der Go-Implementierung geprüft, Gegenstelle übernommen');
+        pruefe($pgw->attrs['GegenstelleSki'] === (string)EEBGWCert::skiAusZertifikat((string)file_get_contents($cbCert)), 'Pairing: richtiger SKI gepinnt (ohne Eingabe)');
+        pruefe($psock->config['Open'] === true && $psock->config['Port'] === $port, 'Pairing: Client Socket auf gefundene Adresse eingestellt (' . ($psock->config['Host'] ?? '') . ':' . ($psock->config['Port'] ?? '') . ')');
+        // Verbinden wie der Client Socket
+        $dir = sys_get_temp_dir();
+        file_put_contents("$dir/eebgw-pc.pem", base64_decode($psock->config['Certificate']));
+        file_put_contents("$dir/eebgw-pk.pem", base64_decode($psock->config['PrivateKey']));
+        file_put_contents("$dir/eebgw-pca.pem", base64_decode($psock->config['CertificateAuthority']));
+        $s = stream_socket_client('tls://' . $psock->config['Host'] . ':' . $port, $en, $es, 5, STREAM_CLIENT_CONNECT, stream_context_create(['ssl' => [
+            'local_cert' => "$dir/eebgw-pc.pem", 'local_pk' => "$dir/eebgw-pk.pem", 'cafile' => "$dir/eebgw-pca.pem",
+            'verify_peer' => true, 'verify_peer_name' => false, 'allow_self_signed' => true]]));
+        $GLOBALS['BRUECKE'] = $s;
+        stream_set_blocking($s, false);
+        $pgw->MessageSink(time(), 10301, IM_CHANGESTATUS, [IS_ACTIVE, 0]);
+        $bis = time() + 15;
+        while (time() < $bis && ($pgw->vars['Verbunden'] ?? false) !== true) {
+            $r = [$s]; $w = $x = null;
+            if (stream_select($r, $w, $x, 1) > 0) {
+                $daten = fread($s, 65536);
+                if ($daten === '' && feof($s)) { break; }
+                $pgw->ReceiveData(json_encode(['DataID' => '{018EF6B5-AB94-40C6-AA53-46943E824ACF}', 'Buffer' => mb_convert_encoding($daten, 'UTF-8', 'ISO-8859-1')]));
+            }
+        }
+        pruefe(($pgw->vars['Verbunden'] ?? false) === true, 'Pairing: SHIP-Verbindung steht, controlbox vertraut dem Gateway über den Fingerabdruck');
+        fclose($s);
+        unset($GLOBALS['BRUECKE']);
+    } finally {
+        unset($GLOBALS['MDNS_LIVE']);
+        proc_terminate($proc);
+        proc_close($proc);
+    }
+}
+
+/** dns-sd auf macOS kurz laufen lassen und die Ausgabe einsammeln. */
+function dnssdLauf(array $args, int $sekunden = 3): string
+{
+    $p = proc_open(array_merge(['dns-sd'], $args), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    stream_set_blocking($pipes[1], false);
+    $out = '';
+    $ende = microtime(true) + $sekunden;
+    while (microtime(true) < $ende) {
+        $out .= (string)stream_get_contents($pipes[1]);
+        usleep(100000);
+    }
+    proc_terminate($p);
+    proc_close($p);
+    return $out;
+}
+
+function mdnsLiveTypen(string $typ): array
+{
+    $namen = [];
+    foreach (explode("\n", dnssdLauf(['-B', $typ, 'local.'])) as $z) {
+        if (preg_match('/\sAdd\s+\d+\s+\d+\s+local\.\s+' . preg_quote($typ, '/') . '\.\s+(.+)$/', $z, $m)) {
+            $namen[trim($m[1])] = ['Name' => trim($m[1]), 'Type' => $typ, 'Domain' => 'local'];
+        }
+    }
+    return array_values($namen);
+}
+
+function mdnsLiveDienst(string $name, string $typ): array
+{
+    $o = dnssdLauf(['-L', $name, $typ, 'local.']);
+    if (!preg_match('/can be reached at (\S+?)\.?:(\d+)/', $o, $m)) {
+        return [];
+    }
+    $host = $m[1];
+    $rest = substr($o, strpos($o, $m[0]) + strlen($m[0]));
+    $rest = substr($rest, strpos($rest, "\n") + 1);
+    $txt = [];
+    foreach (preg_split('/(?<!\\\\) /', trim(strtok($rest, "\n"))) as $teil) {
+        if (strpos($teil, '=') !== false) {
+            $txt[] = str_replace('\\ ', ' ', $teil);
+        }
+    }
+    $ip = gethostbyname($host);
+    return [['Name' => $name, 'Host' => $host, 'Port' => (int)$m[2], 'TXTRecords' => $txt, 'IPv4' => $ip !== $host ? [$ip] : [], 'IPv6' => []]];
 }
 
 echo "\n" . $GLOBALS['OK'] . ' bestanden, ' . $GLOBALS['FEHLER'] . " fehlgeschlagen\n";
