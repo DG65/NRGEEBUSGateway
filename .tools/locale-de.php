@@ -67,6 +67,7 @@ $de = [
     'Compare it with the SKI the device itself shows (app, web interface, type plate). If it matches, click “Trust this SKI” in the form.' => 'Vergleiche ihn mit dem SKI, den das Gerät selbst anzeigt (App, Weboberfläche, Typenschild). Stimmt er, im Formular „Diesen SKI übernehmen“ klicken.',
     'There is no checked certificate yet. Please click “Check remote device” first.' => 'Es liegt kein geprüftes Zertifikat vor. Bitte zuerst „Gegenstelle prüfen“ klicken.',
     'Remote device applied (SKI %s). The gateway is connecting now.' => 'Gegenstelle übernommen (SKI %s). Das Gateway verbindet sich jetzt.',
+    'Remote device applied (SKI %s). It connects again by itself with its next attempt (usually within a few minutes).' => 'Gegenstelle übernommen (SKI %s). Sie verbindet sich beim nächsten Versuch von selbst wieder (meist binnen weniger Minuten).',
     'Trust the SKI of this gateway in the remote device: %s' => 'Gib in der Gegenstelle den SKI dieses Gateways frei: %s',
     'Remote device set, SKI %s' => 'Gegenstelle festgelegt, SKI %s',
     'New certificate created. New SKI: %s' => 'Neues Zertifikat erzeugt. Neuer SKI: %s',

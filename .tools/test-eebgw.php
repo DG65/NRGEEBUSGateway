@@ -825,7 +825,8 @@ if ($ls !== false) {
                 $form = json_encode(formular($sgw), JSON_UNESCAPED_UNICODE);
                 pruefe(strpos($form, 'Ein Gerät möchte sich verbinden') !== false, 'Formular: „Ein Gerät möchte sich verbinden“ mit SKI');
                 neueAnfrage($sgw);
-                pruefe(strpos($sgw->GegenstelleUebernehmen(), '✅') === 0, 'SKI übernommen (wie „Diesen SKI übernehmen“)');
+                $ant = $sgw->GegenstelleUebernehmen();
+                pruefe(strpos($ant, '✅') === 0 && strpos($ant, 'nächsten Versuch') !== false, 'SKI übernommen (wie „Diesen SKI übernehmen“), Meldung: Gerät verbindet sich selbst wieder');
             }
             foreach ($sgw->anKinder as $e) {
                 if (($e['Target'] ?? 0) !== 10502) { continue; }

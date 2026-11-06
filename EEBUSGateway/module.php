@@ -212,6 +212,10 @@ class EEBUSGateway extends IPSModule
         }
         $this->gegenstelleFestlegen($g);
         $this->UpdateFormField('KandidatPanel', 'visible', false);
+        if ($this->serverRolle()) {
+            // Server-Rolle: Das Gerät hat sich schon gemeldet und vertraut dem Gateway; es verbindet sich selbst wieder.
+            return '✅ ' . $this->t('Remote device applied (SKI %s). It connects again by itself with its next attempt (usually within a few minutes).', EEBGWCert::lesbar($g['ski']));
+        }
         return '✅ ' . $this->t('Remote device applied (SKI %s). The gateway is connecting now.', EEBGWCert::lesbar($g['ski'])) . "\n"
             . $this->t('Trust the SKI of this gateway in the remote device: %s', EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki')));
     }

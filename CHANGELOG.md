@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 (Build 10, 06.11.2026)
+
+- Server-Rolle: „Diesen SKI übernehmen“ meldet jetzt richtig, dass sich das Gerät beim nächsten Versuch
+  selbst verbindet (vorher „Das Gateway verbindet sich jetzt“, live in Symcon gesehen).
+
 ## 0.5.1 (Build 9, 06.11.2026)
 
 - Behoben (live in Symcon 9.0 gefunden): In der Server-Rolle scheiterte jeder TLS-Handschlag mit „ECDHE key
