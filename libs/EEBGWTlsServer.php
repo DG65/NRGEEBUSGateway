@@ -287,8 +287,9 @@ final class EEBGWTlsServer
         $der = self::der($this->zertifikat);
         $out .= $this->handschlagSenden(11, self::len3(self::len3($der) . $der) . self::len3($der) . $der);
 
-        $k = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
-        if ($k === false || !openssl_pkey_export($k, $pem)) {
+        $pem = self::ephemerSchluessel();
+        $k = openssl_pkey_get_private($pem);
+        if ($k === false) {
             throw new RuntimeException('ECDHE key could not be created');
         }
         $this->ephemer = $pem;
@@ -446,6 +447,22 @@ final class EEBGWTlsServer
     // ------------------------------------------------------------------
     // Hilfen
     // ------------------------------------------------------------------
+
+    /**
+     * Flüchtiger P-256-Schlüssel ohne openssl_pkey_new: Das braucht eine OpenSSL-Konfiguration, die Symcons
+     * PHP nicht hat (live 06.11.2026: „ECDHE key could not be created“), und Temp-Dateien wollen wir für
+     * jeden Handschlag nicht. Deshalb Zufallszahl 1 ≤ d < n als SEC1-ECPrivateKey ohne öffentlichen Teil;
+     * OpenSSL berechnet den Punkt beim Laden selbst.
+     */
+    private static function ephemerSchluessel(): string
+    {
+        $n = (string)hex2bin('FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551');
+        do {
+            $d = random_bytes(32);
+        } while ($d >= $n || ltrim($d, "\x00") === '');
+        $der = (string)hex2bin('30310201010420') . $d . (string)hex2bin('a00a06082a8648ce3d030107');
+        return "-----BEGIN EC PRIVATE KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END EC PRIVATE KEY-----\n";
+    }
 
     private static function len3(string $s): string
     {

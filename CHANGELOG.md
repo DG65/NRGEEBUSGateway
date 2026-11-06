@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 (Build 9, 06.11.2026)
+
+- Behoben (live in Symcon 9.0 gefunden): In der Server-Rolle scheiterte jeder TLS-Handschlag mit „ECDHE key
+  could not be created“, weil `openssl_pkey_new` in Symcons PHP ohne OpenSSL-Konfiguration nicht geht. Der
+  flüchtige Schlüssel entsteht jetzt ohne Konfiguration und ohne Temp-Datei (Zufallszahl als SEC1-Schlüssel,
+  den Punkt berechnet OpenSSL). Prüfstand Teil 5 läuft jetzt auch mit `OPENSSL_CONF=/nonexistent`.
+
 ## 0.5.0 (Build 8, 06.11.2026)
 
 - 🔄 Neu: **Server-Rolle** für Geräte, die die Verbindung nur selbst aufbauen (z. B. Wolf Link).
