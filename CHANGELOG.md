@@ -17,6 +17,10 @@
 - Behoben: In mehrere WebSocket-Rahmen geteilte Nachrichten (gorilla/websocket teilt große Nachrichten,
   gesehen bei der Discovery einer simulierten Wärmepumpe) wurden als unlesbar verworfen.
 - Neuer Status 205: Elterninstanz passt nicht zur Richtung.
+- Rolle Energiemanagement: Einzelobjekte (z. B. `smartEnergyManagementPsData` für OHPCF) werden wie
+  von eebus-go immer mit `partial` geschrieben; lehnt die Gegenstelle das ab (spine-go als Server kann es
+  für diesen Typ nicht), schickt das Gateway einmal das vollständige, zusammengeführte Objekt.
+  Teil-Meldungen von Einzelobjekten werden eingearbeitet statt ersetzt.
 - Geprüft: TLS-Server gegen `openssl s_client` (CBC, GCM, ohne Client-Zertifikat, falsche Chiffre) und
   live gegen eebus-go als Wärmepumpe, die das Gateway per mDNS findet und sich selbst verbindet
   (Prüfstand Teil 5 `--live-server`): Bestätigung des SKI, zweite Verbindung, SHIP-Sitzung, LPC-Grenze.

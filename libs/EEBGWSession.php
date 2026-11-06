@@ -660,8 +660,7 @@ final class EEBGWSession
                 if ($r !== null && (int)($r->errorNumber ?? 0) !== 0) {
                     $this->l('   remote device reports error ' . json_encode($r));
                 }
-                $this->ergebnisZuordnen((int)($h->msgCounterReference ?? 0), $r);
-                return '';
+                return $this->ergebnisZuordnen((int)($h->msgCounterReference ?? 0), $r);
         }
         return '';
     }
@@ -890,7 +889,9 @@ final class EEBGWSession
     {
         $def = self::LISTEN_SCHLUESSEL[$fn] ?? null;
         if ($def === null) {
-            return [$neu, $neu == $alt ? [] : [$neu]];
+            // Einzelobjekt (z. B. smartEnergyManagementPsData): bei "partial" Felder einarbeiten, sonst ersetzen.
+            $gesamt = $teilweise && $alt !== [] ? array_replace_recursive($alt, $neu) : $neu;
+            return [$gesamt, $gesamt == $alt ? [] : [$gesamt]];
         }
         [$liste, $id] = $def;
         $altListe = [];
@@ -1204,7 +1205,8 @@ final class EEBGWSession
             return ['out' => '', 'msgCounter' => null, 'error' => 'remote function ' . $fn . ' is not writable'];
         }
         // Ohne "partial" beim Server muss die ganze Liste geschickt werden (wie eebus-go WriteLimitData).
-        $kannTeilweise = in_array('partial', $ops, true);
+        // Einzelobjekte schickt eebus-go immer mit "partial" (z. B. SmartEnergyManagementPs WriteData).
+        $kannTeilweise = in_array('partial', $ops, true) || !isset(self::LISTEN_SCHLUESSEL[$fn]);
         $inhalt = (array)$daten;
         if (!$teilweise || !$kannTeilweise) {
             $alt = $this->remoteDaten($entity, $typ, $fn) ?? [];
@@ -1216,11 +1218,32 @@ final class EEBGWSession
         }
         $cmd[$fn] = $inhalt;
         $out = $this->spineSend(['addressSource' => $von, 'addressDestination' => $an, 'cmdClassifier' => 'write', 'ackRequest' => true], $cmd);
-        $this->ausstehend[$this->msgCounter] = ['owner' => $owner, 'art' => 'write', 'function' => $fn, 'seit' => time()];
+        $this->ausstehend[$this->msgCounter] = ['owner' => $owner, 'art' => 'write', 'function' => $fn, 'seit' => time(),
+            'nochmal' => isset($cmd['filter']) && !isset(self::LISTEN_SCHLUESSEL[$fn])
+                ? ['entity' => $entity, 'typ' => $typ, 'daten' => $inhalt, 'von' => $von, 'an' => $an] : null];
         return ['out' => $out, 'msgCounter' => $this->msgCounter, 'error' => ''];
     }
 
-    private function ergebnisZuordnen(int $bezug, $r): void
+    /**
+     * Gegenstelle lehnt "partial" für ein Einzelobjekt ab (gesehen bei spine-go als Server, das für
+     * SmartEnergyManagementPsData kein partial kann, während eebus-go als Client immer partial schreibt):
+     * einmal ohne Filter mit dem vollständigen, zusammengeführten Objekt wiederholen.
+     */
+    private function ohnePartialWiederholen(array $a): string
+    {
+        $n = $a['nochmal'];
+        $alt = $this->remoteDaten((array)$n['entity'], (string)$n['typ'], (string)$a['function']) ?? [];
+        $voll = $alt === [] ? (array)$n['daten'] : array_replace_recursive($alt, (array)$n['daten']);
+        $this->l('   remote device rejects partial write, resending complete ' . $a['function']);
+        $out = $this->spineSend(['addressSource' => $n['von'], 'addressDestination' => $n['an'], 'cmdClassifier' => 'write', 'ackRequest' => true],
+            ['function' => $a['function'], $a['function'] => $voll]);
+        // Antwort auf die Wiederholung gilt für die ursprüngliche Anfrage des Kinds.
+        $this->ausstehend[$this->msgCounter] = ['owner' => $a['owner'], 'art' => 'write', 'function' => $a['function'], 'seit' => time(),
+            'nochmal' => null, 'bezug' => $a['bezug'] ?? null];
+        return $out;
+    }
+
+    private function ergebnisZuordnen(int $bezug, $r): string
     {
         $a = $this->ausstehend[$bezug] ?? null;
         // Alte Einträge (keine Antwort binnen 5 Minuten) verwerfen.
@@ -1230,11 +1253,17 @@ final class EEBGWSession
             }
         }
         if ($a === null) {
-            return;
+            return '';
         }
         unset($this->ausstehend[$bezug]);
-        $this->ereignis(['event' => 'result', 'owner' => $a['owner'], 'msgCounter' => $bezug, 'function' => $a['function'],
-            'errorNumber' => (int)($r->errorNumber ?? 0), 'description' => (string)($r->description ?? '')]);
+        $nr = (int)($r->errorNumber ?? 0);
+        if ($nr !== 0 && !empty($a['nochmal']) && stripos((string)($r->description ?? ''), 'partial') !== false) {
+            $a['bezug'] = $a['bezug'] ?? $bezug;
+            return $this->ohnePartialWiederholen($a);
+        }
+        $this->ereignis(['event' => 'result', 'owner' => $a['owner'], 'msgCounter' => $a['bezug'] ?? $bezug, 'function' => $a['function'],
+            'errorNumber' => $nr, 'description' => (string)($r->description ?? '')]);
+        return '';
     }
 
     private function heartbeatAbonnieren(): string
