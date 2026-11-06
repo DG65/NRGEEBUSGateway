@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 (Build 7, 06.11.2026)
+
+- 🔁 Neu: Rolle **Energiemanagement** (Kind-Schnittstelle 1.1, rückwärtskompatibel). Ein Kind meldet
+  Client-Features und im Feld `remote` die gewünschten Entitäten der Gegenstelle an; das Gateway
+  abonniert, bindet und liest sie nach jeder Discovery selbst (auch wenn Entitäten später kommen oder
+  gehen) und meldet `remoteEntity`, `data` (zusammengeführter Gesamtstand) und `result`. Neue Befehle
+  `Read`, `Write` (mit `partial`, sonst ganze Liste wie eebus-go) und `GetRemoteData`.
+- Discovery-Änderungen der Gegenstelle (`notify`) lösen eine neue Abfrage aus; `reply`/`notify` mit
+  `ackRequest` werden bestätigt.
+- Geprüft gegen einen simulierten Verbraucher (eebus-go `evse` mit MPC, als Wallbox und als
+  Wärmepumpe): Anbinden, Lesen, Grenze schreiben, Bestätigung, gemessene Leistung sinkt.
+  Erstes Fachmodul: NRG-Stack WPEEBUSHub (Wärmepumpen).
+
 ## 0.3.0 (Build 6, 06.11.2026)
 
 - 🔗 Neu: Kopplung über den **SHIP Pairing Service**. Das Gateway erzeugt ein Kopplungsgeheimnis und zeigt

@@ -59,6 +59,9 @@ $de = [
     'Remote device not checked yet' => 'Gegenstelle noch nicht geprüft',
     'Not connected' => 'Nicht verbunden',
     'Child instance #%s (%s) registered: %s' => 'Kind-Instanz #%s (%s) angemeldet: %s',
+    'Remote device offers %s (entity %s) for instance #%s.' => 'Die Gegenstelle bietet %s an (Entität %s), angebunden für Instanz #%s.',
+    'Remote device no longer offers entity %s.' => 'Die Gegenstelle bietet Entität %s nicht mehr an.',
+    'The remote device rejected %s: error %s %s' => 'Die Gegenstelle hat %s abgelehnt: Fehler %s %s',
     'EEBUS connection established (remote device %s).' => 'EEBUS-Verbindung steht (Gegenstelle %s).',
     'EEBUS connection closed.' => 'EEBUS-Verbindung getrennt.',
     'Write command from the remote device for %s, instance #%s: %s' => 'Schreibbefehl der Gegenstelle für %s, Instanz #%s: %s',
@@ -201,6 +204,8 @@ $de = [
 
     '• 🔗 New: pairing via the SHIP Pairing Service. The gateway shows its pairing data as text and QR code for the metering point operator; the control box then announces itself, and the gateway checks it and trusts it by itself - no address, port or SKI to enter.' => '• 🔗 Neu: Kopplung über den SHIP Pairing Service. Das Gateway zeigt seine Kopplungsdaten als Text und QR-Code für den Messstellenbetreiber; die Steuerbox meldet sich danach selbst, das Gateway prüft und übernimmt sie - ohne Adresse, Port oder SKI einzutragen.',
     '• The “This gateway” section is now at the bottom with the actions.' => '• Der Bereich „Dieses Gateway“ steht jetzt unten bei den Aktionen.',
+    '• 🔁 New: the gateway can also act as energy management towards EEBUS devices such as heat pumps or wallboxes - it subscribes to their data and writes limits on behalf of an application module (first of all NRG-Stack WPEEBUSHub for heat pumps).' => '• 🔁 Neu: Das Gateway kann gegenüber EEBUS-Geräten wie Wärmepumpen oder Wallboxen auch das Energiemanagement sein - es abonniert ihre Daten und schreibt Grenzen im Auftrag eines Fachmoduls (zuerst NRG-Stack WPEEBUSHub für Wärmepumpen).',
+    '• One gateway per device: create a separate gateway for each heat pump, wallbox or control box.' => '• Je Gerät ein Gateway: für jede Wärmepumpe, Wallbox oder Steuerbox ein eigenes Gateway anlegen.',
     'If your metering point operator uses the SHIP Pairing Service, use “Pairing via the metering point operator” at the bottom instead: you hand over the QR code, and the gateway finds the control box by itself.' => 'Arbeitet dein Messstellenbetreiber mit dem SHIP Pairing Service, nimm stattdessen unten „Kopplung über den Messstellenbetreiber“: Du gibst den QR-Code weiter, und das Gateway findet die Steuerbox selbst.',
 ];
 

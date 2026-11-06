@@ -1,4 +1,4 @@
-# EEBUSGateway – Kind-Schnittstelle 1.0
+# EEBUSGateway – Kind-Schnittstelle 1.1
 
 Wie sich ein Fachmodul (z. B. SteuerboxHub, später eine WP-Anbindung) als Kind-Instanz an das
 EEBUSGateway hängt. Das Gateway kennt keine Fachlogik: Es baut aus den Anmeldungen der Kinder den
@@ -97,3 +97,56 @@ Zu `write`:
 - `heartbeat`/`lost` → Ausfallgrenze anwenden (LPC Szenario 3), bis wieder `ok` und ein neuer
   Grenzwert kommt.
 - Umrechnung auf `SBH_GetState`: `loadPMin` in kW = Grenze/1000; die Verteilung macht das EMS.
+
+## Rolle Energiemanagement (ab Schnittstelle 1.1)
+
+Gegenüber einer Wallbox, Wärmepumpe oder einem anderen EEBUS-Verbraucher ist das Gateway nicht das
+gesteuerte Gerät, sondern das Energiemanagement (CEM): Es liest, abonniert und schreibt Funktionen
+der Gegenstelle. Das Kind meldet dazu **Client-Features** an und sagt im Feld `remote`, welche
+Entitäten der Gegenstelle es ansprechen will. Den Rest (Abonnieren, Binden, erstes Lesen nach jeder
+Discovery, auch wenn Entitäten später hinzukommen oder wegfallen) erledigt das Gateway selbst –
+Vorbild ist eebus-go `usecases/eg/lpc` `connected()`.
+
+```json
+{"Cmd": "Register", "Entity": {
+  "type": "CEM",
+  "useCases": [
+    {"actor": "EnergyGuard", "name": "limitationOfPowerConsumption", "version": "1.0.0", "subRevision": "release", "scenarios": [1,2,3,4]},
+    {"actor": "MonitoringAppliance", "name": "monitoringOfPowerConsumption", "version": "1.0.0", "subRevision": "release", "scenarios": [1,2]}
+  ],
+  "features": [
+    {"type": "LoadControl", "role": "client"}, {"type": "DeviceConfiguration", "role": "client"},
+    {"type": "ElectricalConnection", "role": "client"}, {"type": "Measurement", "role": "client"}
+  ],
+  "remote": {"entityTypes": ["EVSE", "HeatPumpAppliance", "Compressor"], "features": [
+    {"type": "LoadControl", "subscribe": true, "bind": true, "read": ["loadControlLimitDescriptionListData", "loadControlLimitListData"]},
+    {"type": "Measurement", "subscribe": true, "read": ["measurementDescriptionListData", "measurementListData"]}
+  ]}
+}}
+```
+
+Neue Befehle Kind → Gateway:
+
+| `Cmd` | Felder | Antwort |
+|---|---|---|
+| `Write` | `Entity` (Adresse der Gegenstelle, z. B. `[1]`), `Feature`, `Function`, `Data`, optional `Partial` (Standard `true`) | `{"ok": true, "msgCounter": n}`; Bestätigung kommt als Ereignis `result` |
+| `Read` | `Entity`, `Feature`, `Function` | `{"ok": true, "msgCounter": n}`; Daten kommen als Ereignis `data` |
+| `GetRemoteData` | `Entity`, `Feature`, `Function` | `{"ok": true, "data": …}` – zuletzt bekannter Stand (null = unbekannt) |
+
+Kann die Gegenstelle nicht teilweise schreiben (`write` ohne `partial` in der Discovery), ergänzt das
+Gateway die Liste selbst um den bekannten Stand, wie eebus-go `WriteLimitData`.
+
+Neue Ereignisse Gateway → Kind (jeweils mit `Target` = Kind):
+
+| `Event` | Felder | Bedeutung |
+|---|---|---|
+| `remoteEntity` | `state` (`added`/`removed`), `entity`, `type`, `features` | Gewünschte Entität der Gegenstelle angebunden bzw. weggefallen (z. B. Fahrzeug abgesteckt) |
+| `data` | `entity`, `feature`, `function`, `data`, `changes`, `cmd` (`reply`/`notify`) | Daten der Gegenstelle; `data` ist der zusammengeführte Gesamtstand |
+| `result` | `msgCounter`, `function`, `errorNumber`, `description` | Antwort der Gegenstelle auf `Write`/`Read` (0 = angenommen) |
+
+Ein Gateway hält genau eine Gegenstelle. Für mehrere Geräte (Steuerbox, Wallbox, Wärmepumpe) je ein
+Gateway anlegen.
+
+Geprüft (06.11.2026, `.tools/test-eebgw.php --live-verbraucher`) gegen eebus-go `examples/evse`,
+erweitert um MPC (Leistung/Energie), als EVSE und als HeatPumpAppliance: Anbindung, Lesen, Grenze
+4000 W schreiben, Bestätigung, gemessene Leistung sinkt.

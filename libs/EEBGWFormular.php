@@ -29,6 +29,10 @@ trait EEBGWFormular
             '• 🔗 New: pairing via the SHIP Pairing Service. The gateway shows its pairing data as text and QR code for the metering point operator; the control box then announces itself, and the gateway checks it and trusts it by itself - no address, port or SKI to enter.',
             '• The “This gateway” section is now at the bottom with the actions.',
         ],
+        '0.4.0' => [
+            '• 🔁 New: the gateway can also act as energy management towards EEBUS devices such as heat pumps or wallboxes - it subscribes to their data and writes limits on behalf of an application module (first of all NRG-Stack WPEEBUSHub for heat pumps).',
+            '• One gateway per device: create a separate gateway for each heat pump, wallbox or control box.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';

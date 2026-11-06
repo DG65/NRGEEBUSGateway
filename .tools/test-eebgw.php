@@ -303,7 +303,7 @@ pruefe(strpos($gw->GegenstellePruefen(), 'Adresse und Port') !== false, 'Gegenst
 
 $kind = new FakeKind(10003, 10002);
 $r = kindRuft($gw, 10003, ['Cmd' => 'Register', 'Entity' => lpcAnmeldung()]);
-pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.0', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.0');
+pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.1', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.1');
 foreach (lpcDaten() as [$f, $fn, $d]) {
     $r = kindRuft($gw, 10003, ['Cmd' => 'SetData', 'Feature' => $f, 'Function' => $fn, 'Data' => $d]);
 }
@@ -598,6 +598,121 @@ if ($lp !== false) {
         unset($GLOBALS['BRUECKE']);
     } finally {
         unset($GLOBALS['MDNS_LIVE']);
+        proc_terminate($proc);
+        proc_close($proc);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Teil 4 (--live-verbraucher <verbraucher-sim> <cert> <key> [evse|heatpump]): Gateway in der Rolle
+// Energiemanagement gegen einen simulierten EEBUS-Verbraucher (eebus-go evse, erweitert um MPC).
+// Ein Platzhalter-Kind meldet sich als Energy Guard (LPC) und Monitoring Appliance (MPC) an,
+// das Gateway bindet die Entität der Gegenstelle selbst an, das Kind schreibt eine Grenze und
+// sieht die gemessene Leistung danach sinken.
+$lv = array_search('--live-verbraucher', $argv, true);
+if ($lv !== false) {
+    [$bin, $vCert, $vKey] = array_slice($argv, $lv + 1, 3);
+    $typ = $argv[$lv + 4] ?? 'evse';
+    echo "\nTeil 4: Rolle Energiemanagement live gegen simulierten Verbraucher ($typ)\n";
+    $port = 4714;
+    $vgw = new EEBUSGateway(10400);
+    $vsock = new FakeSocket(10401);
+    $vgw->parentId = 10401;
+    $vgw->Create();
+    $vgw->ApplyChanges();
+    new FakeKind(10402, 10400);
+    $GLOBALS['INST'][10402]->name = 'Verbraucher (Test)';
+    $client = function (string $t) { return ['type' => $t, 'role' => 'client', 'functions' => []]; };
+    $r = kindRuft($vgw, 10402, ['Cmd' => 'Register', 'Entity' => [
+        'type' => 'CEM',
+        'useCases' => [
+            ['actor' => 'EnergyGuard', 'name' => 'limitationOfPowerConsumption', 'version' => '1.0.0', 'subRevision' => 'release', 'scenarios' => [1, 2, 3, 4]],
+            ['actor' => 'MonitoringAppliance', 'name' => 'monitoringOfPowerConsumption', 'version' => '1.0.0', 'subRevision' => 'release', 'scenarios' => [1, 2]],
+        ],
+        'features' => [$client('LoadControl'), $client('DeviceConfiguration'), $client('ElectricalConnection'), $client('Measurement')],
+        'remote' => ['entityTypes' => ['EVSE', 'HeatPumpAppliance', 'Compressor'], 'features' => [
+            ['type' => 'LoadControl', 'subscribe' => true, 'bind' => true, 'read' => ['loadControlLimitDescriptionListData', 'loadControlLimitListData']],
+            ['type' => 'DeviceConfiguration', 'subscribe' => true, 'bind' => true, 'read' => ['deviceConfigurationKeyValueDescriptionListData', 'deviceConfigurationKeyValueListData']],
+            ['type' => 'ElectricalConnection', 'subscribe' => true, 'read' => ['electricalConnectionDescriptionListData', 'electricalConnectionParameterDescriptionListData', 'electricalConnectionCharacteristicListData']],
+            ['type' => 'Measurement', 'subscribe' => true, 'read' => ['measurementDescriptionListData', 'measurementListData']],
+        ]],
+    ]]);
+    pruefe(($r['ok'] ?? false) && $r['interface'] === '1.1', 'Verbraucher-Kind angemeldet (Energy Guard + Monitoring Appliance)');
+    $log = sys_get_temp_dir() . '/eebgw-verbraucher.log';
+    $proc = proc_open([$bin, '-port', (string)$port, '-certpath', $vCert, '-keypath', $vKey, '-remoteski', $vgw->attrs['EigenerSki'], '-type', $typ],
+        [1 => ['file', $log, 'w'], 2 => ['file', $log, 'a']], $pipes);
+    sleep(2);
+    try {
+        $vgw->props['Host'] = '127.0.0.1';
+        $vgw->props['Port'] = $port;
+        $vgw->props['ErwarteterSki'] = (string)EEBGWCert::skiAusZertifikat((string)file_get_contents($vCert));
+        $vgw->ApplyChanges();
+        $antwort = $vgw->GegenstellePruefen();
+        pruefe(strpos($antwort, '✅') === 0, 'Gegenstelle geprüft: ' . strtok($antwort, "\n"));
+        $dir = sys_get_temp_dir();
+        file_put_contents("$dir/eebgw-vc.pem", base64_decode($vsock->config['Certificate']));
+        file_put_contents("$dir/eebgw-vk.pem", base64_decode($vsock->config['PrivateKey']));
+        file_put_contents("$dir/eebgw-vca.pem", base64_decode($vsock->config['CertificateAuthority']));
+        $s = stream_socket_client("tls://127.0.0.1:$port", $en, $es, 5, STREAM_CLIENT_CONNECT, stream_context_create(['ssl' => [
+            'local_cert' => "$dir/eebgw-vc.pem", 'local_pk' => "$dir/eebgw-vk.pem", 'cafile' => "$dir/eebgw-vca.pem",
+            'verify_peer' => true, 'verify_peer_name' => false, 'allow_self_signed' => true,
+            'ciphers' => 'ECDHE-ECDSA-AES128-SHA256', 'crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT]]));
+        pruefe($s !== false, 'TLS 1.2 mit Pflicht-Chiffre und Pinning aufgebaut');
+        $GLOBALS['BRUECKE'] = $s;
+        stream_set_blocking($s, false);
+        $vgw->MessageSink(time(), 10401, IM_CHANGESTATUS, [IS_ACTIVE, 0]);
+        $entity = null;
+        $limitId = null;
+        $geschrieben = null;
+        $ergebnis = null;
+        $leistungen = [];
+        $gelesen = 0;
+        $ende = time() + 45;
+        while (time() < $ende) {
+            $r = [$s]; $w = $x = null;
+            if (stream_select($r, $w, $x, 1) > 0) {
+                $d = fread($s, 65536);
+                if ($d === '' && feof($s)) { break; }
+                $vgw->ReceiveData(json_encode(['DataID' => '{018EF6B5-AB94-40C6-AA53-46943E824ACF}', 'Buffer' => mb_convert_encoding($d, 'UTF-8', 'ISO-8859-1')]));
+            }
+            $vgw->Takt();
+            foreach ($vgw->anKinder as $e) {
+                if (($e['Target'] ?? 0) !== 10402) { continue; }
+                if ($e['Event'] === 'remoteEntity' && $e['state'] === 'added') { $entity = $e['entity']; }
+                if ($e['Event'] === 'data') { $gelesen++; }
+                if ($e['Event'] === 'data' && $e['function'] === 'loadControlLimitDescriptionListData') {
+                    foreach ($e['data']['loadControlLimitDescriptionData'] ?? [] as $ld) {
+                        if (($ld['limitDirection'] ?? '') === 'consume' && ($ld['scopeType'] ?? '') === 'activePowerLimit') { $limitId = $ld['limitId']; }
+                    }
+                }
+                if ($e['Event'] === 'data' && $e['function'] === 'measurementListData') {
+                    foreach ($e['data']['measurementData'] ?? [] as $m) {
+                        $leistungen[$m['measurementId']] = $m['value']['number'] * (10 ** ($m['value']['scale'] ?? 0));
+                    }
+                }
+                if ($e['Event'] === 'result' && $geschrieben !== null && $e['msgCounter'] === $geschrieben) { $ergebnis = $e; }
+            }
+            $vgw->anKinder = [];
+            if ($entity !== null && $limitId !== null && $geschrieben === null) {
+                $w = kindRuft($vgw, 10402, ['Cmd' => 'Write', 'Entity' => $entity, 'Feature' => 'LoadControl', 'Function' => 'loadControlLimitListData',
+                    'Data' => ['loadControlLimitData' => [['limitId' => $limitId, 'isLimitActive' => true, 'value' => ['number' => 4000, 'scale' => 0]]]]]);
+                pruefe(($w['ok'] ?? false) === true, 'Kind schreibt LPC-Grenze 4000 W über das Gateway' . (($w['ok'] ?? false) ? '' : ': ' . ($w['error'] ?? '?')));
+                $geschrieben = $w['msgCounter'] ?? -1;
+            }
+            if ($ergebnis !== null && in_array(4000, array_map('intval', $leistungen), true)) { break; }
+        }
+        pruefe($entity !== null, 'Gateway hat die Entität der Gegenstelle selbst angebunden (' . json_encode($entity) . ')');
+        pruefe($limitId !== null && $gelesen > 3, "Beschreibungen und Daten gelesen ($gelesen Datenereignisse, Grenze limitId $limitId)");
+        pruefe($ergebnis !== null && $ergebnis['errorNumber'] === 0, 'Gegenstelle bestätigt den Schreibbefehl (result 0)');
+        $roh = kindRuft($vgw, 10402, ['Cmd' => 'GetRemoteData', 'Entity' => (array)$entity, 'Feature' => 'LoadControl', 'Function' => 'loadControlLimitListData']);
+        $aktiv = array_values(array_filter($roh['data']['loadControlLimitData'] ?? [], function ($l) use ($limitId) { return $l['limitId'] === $limitId; }))[0] ?? [];
+        pruefe(!empty($aktiv['isLimitActive']) && ($aktiv['value']['number'] ?? 0) === 4000, 'GetRemoteData: Grenze der Gegenstelle aktiv, 4000 W (per notify nachgeführt)');
+        pruefe(in_array(4000, array_map('intval', $leistungen), true), 'Gemessene Leistung (MPC) sinkt auf 4000 W: ' . json_encode($leistungen));
+        $simLog = (string)file_get_contents($log);
+        pruefe(strpos($simLog, 'SIM limit 4000 W active true') !== false, 'Simulator: Grenze 4000 W übernommen');
+        fclose($s);
+        unset($GLOBALS['BRUECKE']);
+    } finally {
         proc_terminate($proc);
         proc_close($proc);
     }

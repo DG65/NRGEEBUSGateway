@@ -36,6 +36,13 @@ final class EEBGWSession
         'deviceConfigurationKeyValueListData' => ['deviceConfigurationKeyValueData', 'keyId'],
         'deviceConfigurationKeyValueDescriptionListData' => ['deviceConfigurationKeyValueDescriptionData', 'keyId'],
         'electricalConnectionCharacteristicListData' => ['electricalConnectionCharacteristicData', 'characteristicId'],
+        'electricalConnectionDescriptionListData' => ['electricalConnectionDescriptionData', 'electricalConnectionId'],
+        'electricalConnectionParameterDescriptionListData' => ['electricalConnectionParameterDescriptionData', 'parameterId'],
+        'electricalConnectionPermittedValueSetListData' => ['electricalConnectionPermittedValueSetData', 'parameterId'],
+        'measurementListData' => ['measurementData', 'measurementId'],
+        'measurementDescriptionListData' => ['measurementDescriptionData', 'measurementId'],
+        'measurementConstraintsListData' => ['measurementConstraintsData', 'measurementId'],
+        'identificationListData' => ['identificationData', 'identificationId'],
     ];
 
     // --- Konfiguration (vom Modul gesetzt) ---
@@ -73,6 +80,11 @@ final class EEBGWSession
     public $hbVerlorenGemeldet = false;
     public $verbundenSeit = 0;
     public $letzteDaten = 0;
+    // Rolle Energiemanagement: Daten der Gegenstelle je "Entität/Feature" (Entität als JSON-Liste),
+    // offene eigene Anfragen je msgCounter, bereits angesprochene Entitäten je Kind ("owner|Entität").
+    public $remoteData = [];
+    public $ausstehend = [];
+    public $remoteAngebunden = [];
 
     private $events = [];
     private $log = [];
@@ -117,6 +129,8 @@ final class EEBGWSession
                 'type' => (string)($a['type'] ?? 'CEM'),
                 'useCases' => array_values((array)($a['useCases'] ?? [])),
                 'features' => $features,
+                // Rolle Energiemanagement: welche Entitäten der Gegenstelle das Kind ansprechen will.
+                'remote' => (array)($a['remote'] ?? []),
             ];
         }
         return ['entities' => $entities];
@@ -192,7 +206,8 @@ final class EEBGWSession
         foreach (['fehler' => '', 'fehlerVorlage' => '', 'fehlerWerte' => [], 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
             'remoteShipId' => '', 'remoteDevice' => '', 'remoteEntities' => [], 'remoteUseCases' => [], 'subscriptions' => [],
             'bindings' => [], 'lastOwnHb' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
-            'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0] as $k => $v) {
+            'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0,
+            'remoteData' => [], 'ausstehend' => [], 'remoteAngebunden' => []] as $k => $v) {
             $this->$k = $v;
         }
         if ($war) {
@@ -545,13 +560,15 @@ final class EEBGWSession
 
             case 'reply':
             case 'notify':
-                return $this->antwortVerarbeiten($fn, $cmd, $src, $jetzt);
+                $out = $this->antwortVerarbeiten($fn, $cmd, $src, $jetzt, $klasse, $dstE);
+                return ($ack ? $ergebnis(0) : '') . $out;
 
             case 'result':
                 $r = $cmd->resultData ?? null;
                 if ($r !== null && (int)($r->errorNumber ?? 0) !== 0) {
                     $this->l('   remote device reports error ' . json_encode($r));
                 }
+                $this->ergebnisZuordnen((int)($h->msgCounterReference ?? 0), $r);
                 return '';
         }
         return '';
@@ -838,10 +855,17 @@ final class EEBGWSession
         return $alt == $daten ? '' : $this->notify($entity, $feature, $fn);
     }
 
-    private function antwortVerarbeiten(string $fn, stdClass $cmd, stdClass $src, int $jetzt): string
+    private function antwortVerarbeiten(string $fn, stdClass $cmd, stdClass $src, int $jetzt, string $klasse, array $dstE): string
     {
         $daten = $cmd->$fn ?? null;
+        if ($fn === 'nodeManagementDetailedDiscoveryData' && $klasse === 'notify') {
+            // Geänderte Entitäten (z. B. Fahrzeug an der Wallbox angesteckt): Gesamtstand neu erfragen,
+            // statt die Teilmeldung nachzubauen.
+            return $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
+                'cmdClassifier' => 'read'], ['nodeManagementDetailedDiscoveryData' => new stdClass()]);
+        }
         if ($fn === 'nodeManagementDetailedDiscoveryData' && $daten instanceof stdClass) {
+            $erstes = $this->remoteEntities === [];
             $this->remoteEntities = [];
             foreach ((array)($daten->entityInformation ?? []) as $e) {
                 $adr = (array)($e->description->entityAddress->entity ?? []);
@@ -855,7 +879,12 @@ final class EEBGWSession
                 $k = json_encode((array)($fd->featureAddress->entity ?? []));
                 $fns = [];
                 foreach ((array)($fd->supportedFunction ?? []) as $sf) {
-                    $fns[(string)($sf->function ?? '')] = array_keys((array)($sf->possibleOperations ?? []));
+                    $ops = array_keys((array)($sf->possibleOperations ?? []));
+                    // Schreiben mit "partial" erlaubt? Dann genügen beim Schreiben die geänderten Einträge.
+                    if (isset($sf->possibleOperations->write->partial)) {
+                        $ops[] = 'partial';
+                    }
+                    $fns[(string)($sf->function ?? '')] = $ops;
                 }
                 $this->remoteEntities[$k]['features'][] = ['feature' => (int)($fd->featureAddress->feature ?? 0),
                     'type' => (string)($fd->featureType ?? ''), 'role' => (string)($fd->role ?? ''), 'functions' => $fns];
@@ -866,7 +895,13 @@ final class EEBGWSession
             }
             $out = $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
                 'cmdClassifier' => 'read'], ['nodeManagementUseCaseData' => new stdClass()]);
-            return $out . $this->heartbeatAbonnieren();
+            if (!$this->hbAbonniert) {
+                $out .= $this->heartbeatAbonnieren();
+            }
+            if (!$erstes) {
+                $this->l('   remote device model changed');
+            }
+            return $out . $this->remoteAnbinden();
         }
         if ($fn === 'nodeManagementUseCaseData' && $daten instanceof stdClass) {
             $this->remoteUseCases = [];
@@ -878,7 +913,7 @@ final class EEBGWSession
                 }
             }
             $this->ereignis(['event' => 'remote', 'useCases' => $this->remoteUseCases, 'entities' => array_map(function ($e) {
-                return ['entity' => $e['entity'], 'type' => $e['type']];
+                return ['entity' => $e['entity'], 'type' => $e['type'], 'features' => $e['features']];
             }, $this->remoteEntities)]);
             return '';
         }
@@ -890,9 +925,224 @@ final class EEBGWSession
                 $this->l('   remote heartbeat is back');
                 $this->ereignis(['event' => 'heartbeat', 'state' => 'ok']);
             }
+        }
+        return $this->remoteDatenUebernehmen($fn, $cmd, $src, $klasse, $dstE);
+    }
+
+    // ------------------------------------------------------------------
+    // Rolle Energiemanagement: Funktionen der Gegenstelle nutzen
+    // ------------------------------------------------------------------
+
+    /** Server-Feature der Gegenstelle auf einer Entität, null wenn nicht vorhanden. */
+    public function remoteFeature(array $entity, string $typ, string $rolle = 'server'): ?array
+    {
+        foreach ($this->remoteEntities as $e) {
+            if ($e['entity'] != $entity) {
+                continue;
+            }
+            foreach ($e['features'] as $f) {
+                if ($f['type'] === $typ && $f['role'] === $rolle) {
+                    return $f;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Nach (neuer) Discovery: Entitäten der Gegenstelle, die ein Kind laut Anmeldung ansprechen will,
+     * abonnieren, binden und erstmals lesen. Weggefallene Entitäten melden und vergessen.
+     * Vorbild: eebus-go usecases/eg/lpc connected() (Subscribe, Bind, Beschreibungen anfordern).
+     */
+    private function remoteAnbinden(): string
+    {
+        $out = '';
+        $vorhanden = [];
+        foreach ($this->model['entities'] as $lokal) {
+            $wunsch = $lokal['remote'];
+            $typen = (array)($wunsch['entityTypes'] ?? []);
+            if ($typen === []) {
+                continue;
+            }
+            foreach ($this->remoteEntities as $re) {
+                if (!in_array($re['type'], $typen, true)) {
+                    continue;
+                }
+                $schluessel = $lokal['owner'] . '|' . json_encode($re['entity']);
+                $vorhanden[$schluessel] = true;
+                if (isset($this->remoteAngebunden[$schluessel])) {
+                    continue;
+                }
+                $this->remoteAngebunden[$schluessel] = time();
+                $this->l('   binding remote entity ' . json_encode($re['entity']) . ' ' . $re['type'] . ' for #' . $lokal['owner']);
+                $this->ereignis(['event' => 'remoteEntity', 'owner' => $lokal['owner'], 'state' => 'added', 'entity' => $re['entity'],
+                    'type' => $re['type'], 'features' => $re['features']]);
+                foreach ((array)($wunsch['features'] ?? []) as $fw) {
+                    $out .= $this->featureAnbinden($lokal, $re, (array)$fw);
+                }
+            }
+        }
+        foreach (array_keys($this->remoteAngebunden) as $schluessel) {
+            if (isset($vorhanden[$schluessel])) {
+                continue;
+            }
+            unset($this->remoteAngebunden[$schluessel]);
+            [$owner, $ent] = explode('|', $schluessel, 2);
+            foreach (array_keys($this->remoteData) as $k) {
+                if (strpos($k, $ent . '/') === 0) {
+                    unset($this->remoteData[$k]);
+                }
+            }
+            $this->l('   remote entity ' . $ent . ' gone');
+            $this->ereignis(['event' => 'remoteEntity', 'owner' => (int)$owner, 'state' => 'removed', 'entity' => json_decode($ent, true)]);
+        }
+        return $out;
+    }
+
+    private function featureAnbinden(array $lokal, array $re, array $fw): string
+    {
+        $typ = (string)($fw['type'] ?? '');
+        $server = $this->remoteFeature($re['entity'], $typ);
+        $client = $this->featureIndex($lokal['address'], $typ, 'client');
+        if ($server === null) {
             return '';
         }
+        if ($client === null) {
+            $this->l('   no local client feature ' . $typ . ' on entity ' . $lokal['address'] . ' - skipped');
+            return '';
+        }
+        $von = $this->addr([$lokal['address']], $client);
+        $an = ['device' => $this->remoteDevice, 'entity' => $re['entity'], 'feature' => $server['feature']];
+        $out = '';
+        foreach (['subscribe' => ['nodeManagementSubscriptionRequestCall', 'subscriptionRequest'], 'bind' => ['nodeManagementBindingRequestCall', 'bindingRequest']] as $art => [$fn, $feld]) {
+            if (!empty($fw[$art])) {
+                $out .= $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
+                    'cmdClassifier' => 'call', 'ackRequest' => true], [$fn => [$feld => ['clientAddress' => $von, 'serverAddress' => $an, 'serverFeatureType' => $typ]]]);
+            }
+        }
+        foreach ((array)($fw['read'] ?? []) as $lesen) {
+            if (isset($server['functions'][(string)$lesen])) {
+                $out .= $this->spineSend(['addressSource' => $von, 'addressDestination' => $an, 'cmdClassifier' => 'read'], [(string)$lesen => new stdClass()]);
+            }
+        }
+        return $out;
+    }
+
+    /** reply/notify mit Feature-Daten der Gegenstelle: zusammenführen, merken, dem Kind melden. */
+    private function remoteDatenUebernehmen(string $fn, stdClass $cmd, stdClass $src, string $klasse, array $dstE): string
+    {
+        if (strpos($fn, 'nodeManagement') === 0 || !isset($cmd->$fn)) {
+            return '';
+        }
+        $ent = (array)($src->entity ?? []);
+        $feature = (int)($src->feature ?? 0);
+        $typ = '';
+        foreach ($this->remoteEntities as $e) {
+            if ($e['entity'] == $ent) {
+                foreach ($e['features'] as $f) {
+                    if ($f['feature'] === $feature) {
+                        $typ = $f['type'];
+                    }
+                }
+            }
+        }
+        $teilweise = false;
+        foreach ((array)($cmd->filter ?? []) as $filter) {
+            if (isset($filter->cmdControl->partial)) {
+                $teilweise = true;
+            }
+        }
+        $neu = json_decode((string)json_encode($cmd->$fn), true) ?: [];
+        $schluessel = json_encode($ent) . '/' . $feature;
+        $alt = $this->remoteData[$schluessel][$fn] ?? [];
+        [$gesamt, $geaendert] = self::zusammenfuehren($fn, is_array($alt) ? $alt : [], $neu, $teilweise);
+        $this->remoteData[$schluessel][$fn] = $gesamt;
+        $lokal = count($dstE) === 1 ? $this->entity((int)$dstE[0]) : null;
+        if ($lokal === null) {
+            return '';
+        }
+        if ($geaendert !== [] || $klasse === 'reply') {
+            $this->ereignis(['event' => 'data', 'owner' => $lokal['owner'], 'entity' => $ent, 'feature' => $typ, 'function' => $fn,
+                'data' => $gesamt, 'changes' => $geaendert, 'cmd' => $klasse]);
+        }
         return '';
+    }
+
+    /** Gespeicherte Daten einer Funktion der Gegenstelle, null wenn (noch) unbekannt. */
+    public function remoteDaten(array $entity, string $typ, string $fn): ?array
+    {
+        $f = $this->remoteFeature($entity, $typ);
+        if ($f === null) {
+            return null;
+        }
+        $d = $this->remoteData[json_encode($entity) . '/' . $f['feature']][$fn] ?? null;
+        return is_array($d) ? $d : null;
+    }
+
+    /**
+     * Kind will eine Funktion der Gegenstelle lesen oder schreiben.
+     * Rückgabe ['out' => Bytes, 'msgCounter' => int|null, 'error' => englischer Text oder ''].
+     */
+    public function remoteAnfrage(int $owner, string $art, array $entity, string $typ, string $fn, ?array $daten = null, bool $teilweise = true): array
+    {
+        if ($this->phase !== 'data') {
+            return ['out' => '', 'msgCounter' => null, 'error' => 'not connected'];
+        }
+        $lokal = $this->entityOf($owner);
+        $client = $lokal === null ? null : $this->featureIndex($lokal, $typ, 'client');
+        if ($client === null) {
+            return ['out' => '', 'msgCounter' => null, 'error' => 'no client feature ' . $typ . ' registered for this instance'];
+        }
+        $server = $this->remoteFeature($entity, $typ);
+        if ($server === null) {
+            return ['out' => '', 'msgCounter' => null, 'error' => 'remote device has no feature ' . $typ . ' on entity ' . json_encode($entity)];
+        }
+        $ops = (array)($server['functions'][$fn] ?? []);
+        $von = $this->addr([$lokal], $client);
+        $an = ['device' => $this->remoteDevice, 'entity' => $entity, 'feature' => $server['feature']];
+        if ($art === 'read') {
+            if (!in_array('read', $ops, true)) {
+                return ['out' => '', 'msgCounter' => null, 'error' => 'remote function ' . $fn . ' is not readable'];
+            }
+            $out = $this->spineSend(['addressSource' => $von, 'addressDestination' => $an, 'cmdClassifier' => 'read'], [$fn => new stdClass()]);
+            $this->ausstehend[$this->msgCounter] = ['owner' => $owner, 'art' => 'read', 'function' => $fn, 'seit' => time()];
+            return ['out' => $out, 'msgCounter' => $this->msgCounter, 'error' => ''];
+        }
+        if (!in_array('write', $ops, true)) {
+            return ['out' => '', 'msgCounter' => null, 'error' => 'remote function ' . $fn . ' is not writable'];
+        }
+        // Ohne "partial" beim Server muss die ganze Liste geschickt werden (wie eebus-go WriteLimitData).
+        $kannTeilweise = in_array('partial', $ops, true);
+        $inhalt = (array)$daten;
+        if (!$teilweise || !$kannTeilweise) {
+            $alt = $this->remoteDaten($entity, $typ, $fn) ?? [];
+            [$inhalt] = self::zusammenfuehren($fn, $alt, $inhalt, true);
+        }
+        $cmd = ['function' => $fn];
+        if ($teilweise && $kannTeilweise) {
+            $cmd['filter'] = [['cmdControl' => ['partial' => new stdClass()]]];
+        }
+        $cmd[$fn] = $inhalt;
+        $out = $this->spineSend(['addressSource' => $von, 'addressDestination' => $an, 'cmdClassifier' => 'write', 'ackRequest' => true], $cmd);
+        $this->ausstehend[$this->msgCounter] = ['owner' => $owner, 'art' => 'write', 'function' => $fn, 'seit' => time()];
+        return ['out' => $out, 'msgCounter' => $this->msgCounter, 'error' => ''];
+    }
+
+    private function ergebnisZuordnen(int $bezug, $r): void
+    {
+        $a = $this->ausstehend[$bezug] ?? null;
+        // Alte Einträge (keine Antwort binnen 5 Minuten) verwerfen.
+        foreach ($this->ausstehend as $nr => $e) {
+            if (time() - (int)$e['seit'] > 300) {
+                unset($this->ausstehend[$nr]);
+            }
+        }
+        if ($a === null) {
+            return;
+        }
+        unset($this->ausstehend[$bezug]);
+        $this->ereignis(['event' => 'result', 'owner' => $a['owner'], 'msgCounter' => $bezug, 'function' => $a['function'],
+            'errorNumber' => (int)($r->errorNumber ?? 0), 'description' => (string)($r->description ?? '')]);
     }
 
     private function heartbeatAbonnieren(): string

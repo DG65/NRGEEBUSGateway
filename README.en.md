@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.3.0-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.4.0-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -11,11 +11,14 @@
 Connects Symcon via **EEBUS** (SHIP/SPINE) to a device in the home network, e.g. a grid
 operator's control box under § 14a EnWG (the German law on controllable consumer devices). The
 gateway holds the certificate and the pairing and establishes the encrypted connection. What
-happens with the values is decided by application modules attached as child instances (first of
-all **NRG-Stack SteuerboxHub**).
+happens with the values is decided by application modules attached as child instances:
+**NRG-Stack SteuerboxHub** for a § 14a control box (the gateway is the controlled device there) and
+**NRG-Stack WPEEBUSHub** for heat pumps (the gateway acts as energy management there). One gateway
+per device.
 
-> Version 0.3.0: early version, tested against the control box simulator `controlbox` from
-> [eebus-go](https://github.com/enbility/eebus-go). Not yet tested with a real control box.
+> Version 0.4.0: early version, tested against the simulators from
+> [eebus-go](https://github.com/enbility/eebus-go) (control box `controlbox`, consumer `evse` with
+> measurements). Not yet tested with real devices.
 
 ## Setup
 

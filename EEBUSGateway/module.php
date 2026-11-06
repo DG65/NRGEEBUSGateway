@@ -35,7 +35,7 @@ class EEBUSGateway extends IPSModule
     private const DATA_ZUM_KIND = '{12D8B8A8-3EE7-491F-A68A-D632304165D4}';
 
     // Version der Kind-Schnittstelle (Anmeldung/Daten/Ereignisse), .docs/kind-schnittstelle.md.
-    private const SCHNITTSTELLE = '1.0';
+    private const SCHNITTSTELLE = '1.1';
 
     private const TAKT_MS = 5000;
     // Kein SHIP-Abschluss binnen dieser Zeit (und keine ausstehende Freigabe): neu verbinden.
@@ -794,6 +794,14 @@ class EEBUSGateway extends IPSModule
                 return (string)json_encode($this->kindDaten($kind, (string)($d['Feature'] ?? ''), (string)($d['Function'] ?? ''), (array)($d['Data'] ?? [])));
             case 'GetState':
                 return $this->GetState();
+            case 'Read':
+            case 'Write':
+                return (string)json_encode($this->kindAnfrage($kind, $d));
+            case 'GetRemoteData':
+                $r = $this->mitSitzung(function (EEBGWSession $s) use ($d) {
+                    return ['out' => '', 'rueckgabe' => ['ok' => true, 'data' => $s->remoteDaten((array)($d['Entity'] ?? []), (string)($d['Feature'] ?? ''), (string)($d['Function'] ?? ''))]];
+                });
+                return (string)json_encode(is_array($r) ? $r : ['ok' => false, 'error' => 'gateway busy']);
         }
         return (string)json_encode(['ok' => false, 'error' => 'unknown command']);
     }
@@ -865,6 +873,18 @@ class EEBUSGateway extends IPSModule
         return is_array($r) ? $r : ['ok' => false, 'error' => 'gateway busy'];
     }
 
+    /** Rolle Energiemanagement: Kind liest oder schreibt eine Funktion der Gegenstelle (Kind-Schnittstelle 1.1). */
+    private function kindAnfrage(int $kind, array $d): array
+    {
+        $art = $d['Cmd'] === 'Write' ? 'write' : 'read';
+        $r = $this->mitSitzung(function (EEBGWSession $s) use ($kind, $d, $art) {
+            $a = $s->remoteAnfrage($kind, $art, (array)($d['Entity'] ?? []), (string)($d['Feature'] ?? ''), (string)($d['Function'] ?? ''),
+                isset($d['Data']) ? (array)$d['Data'] : null, (bool)($d['Partial'] ?? true));
+            return ['out' => $a['out'], 'rueckgabe' => $a['error'] === '' ? ['ok' => true, 'msgCounter' => $a['msgCounter']] : ['ok' => false, 'error' => $a['error']]];
+        });
+        return is_array($r) ? $r : ['ok' => false, 'error' => 'gateway busy'];
+    }
+
     private function ereignisVerteilen(array $e): void
     {
         $art = (string)($e['event'] ?? '');
@@ -876,6 +896,12 @@ class EEBUSGateway extends IPSModule
             $this->LogMessage($this->t('Write command from the remote device for %s, instance #%s: %s', $e['feature'] . '/' . $e['function'], (string)$e['owner'], (string)json_encode($e['changes'])), KL_MESSAGE);
         } elseif ($art === 'heartbeat' && $e['state'] === 'lost') {
             $this->LogMessage($this->t('Heartbeat of the remote device is missing.'), KL_WARNING);
+        } elseif ($art === 'remoteEntity') {
+            $this->LogMessage($e['state'] === 'added'
+                ? $this->t('Remote device offers %s (entity %s) for instance #%s.', (string)($e['type'] ?? '?'), (string)json_encode($e['entity']), (string)$e['owner'])
+                : $this->t('Remote device no longer offers entity %s.', (string)json_encode($e['entity'])), KL_MESSAGE);
+        } elseif ($art === 'result' && (int)$e['errorNumber'] !== 0) {
+            $this->LogMessage($this->t('The remote device rejected %s: error %s %s', (string)$e['function'], (string)$e['errorNumber'], (string)$e['description']), KL_WARNING);
         } elseif ($art === 'trust') {
             $this->LogMessage($this->t('The remote device is waiting for this gateway to be trusted (SKI %s).', EEBGWCert::lesbar($this->ReadAttributeString('EigenerSki'))), KL_NOTIFY);
         }
