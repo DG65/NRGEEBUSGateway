@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.3 (Build 11, 06.11.2026)
+
+- Rolle Energiemanagement: Das Gateway abonniert jetzt die Geräteübersicht der Gegenstelle. Entitäten, die
+  später hinzukommen oder wegfallen (Fahrzeug an der Wallbox an- oder abgesteckt), meldet es den Kindern
+  sofort (`remoteEntity`). Kind-Schnittstelle 1.2 (rückwärtskompatibel); nötig für NRG-Stack
+  ChargerEEBUSHub.
+
 ## 0.5.2 (Build 10, 06.11.2026)
 
 - Server-Rolle: „Diesen SKI übernehmen“ meldet jetzt richtig, dass sich das Gerät beim nächsten Versuch

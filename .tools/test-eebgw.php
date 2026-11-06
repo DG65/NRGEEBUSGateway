@@ -317,7 +317,7 @@ pruefe(strpos($gw->GegenstellePruefen(), 'Adresse und Port') !== false, 'Gegenst
 
 $kind = new FakeKind(10003, 10002);
 $r = kindRuft($gw, 10003, ['Cmd' => 'Register', 'Entity' => lpcAnmeldung()]);
-pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.1', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.1');
+pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.2', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.2');
 foreach (lpcDaten() as [$f, $fn, $d]) {
     $r = kindRuft($gw, 10003, ['Cmd' => 'SetData', 'Feature' => $f, 'Function' => $fn, 'Data' => $d]);
 }
@@ -651,7 +651,7 @@ if ($lv !== false) {
             ['type' => 'Measurement', 'subscribe' => true, 'read' => ['measurementDescriptionListData', 'measurementListData']],
         ]],
     ]]);
-    pruefe(($r['ok'] ?? false) && $r['interface'] === '1.1', 'Verbraucher-Kind angemeldet (Energy Guard + Monitoring Appliance)');
+    pruefe(($r['ok'] ?? false) && $r['interface'] === '1.2', 'Verbraucher-Kind angemeldet (Energy Guard + Monitoring Appliance)');
     $log = sys_get_temp_dir() . '/eebgw-verbraucher.log';
     $proc = proc_open([$bin, '-port', (string)$port, '-certpath', $vCert, '-keypath', $vKey, '-remoteski', $vgw->attrs['EigenerSki'], '-type', $typ],
         [1 => ['file', $log, 'w'], 2 => ['file', $log, 'a']], $pipes);

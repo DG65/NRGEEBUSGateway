@@ -1,4 +1,4 @@
-# EEBUSGateway – Kind-Schnittstelle 1.1
+# EEBUSGateway – Kind-Schnittstelle 1.2
 
 Wie sich ein Fachmodul (z. B. SteuerboxHub, später eine WP-Anbindung) als Kind-Instanz an das
 EEBUSGateway hängt. Das Gateway kennt keine Fachlogik: Es baut aus den Anmeldungen der Kinder den
@@ -143,6 +143,11 @@ Neue Ereignisse Gateway → Kind (jeweils mit `Target` = Kind):
 | `remoteEntity` | `state` (`added`/`removed`), `entity`, `type`, `features` | Gewünschte Entität der Gegenstelle angebunden bzw. weggefallen (z. B. Fahrzeug abgesteckt) |
 | `data` | `entity`, `feature`, `function`, `data`, `changes`, `cmd` (`reply`/`notify`) | Daten der Gegenstelle; `data` ist der zusammengeführte Gesamtstand |
 | `result` | `msgCounter`, `function`, `errorNumber`, `description` | Antwort der Gegenstelle auf `Write`/`Read` (0 = angenommen) |
+
+Ab 1.2 (Gateway 0.5.3) abonniert das Gateway die Geräteübersicht (NodeManagement) der Gegenstelle:
+Entitäten, die nach dem Verbinden kommen oder gehen (Fahrzeug an der Wallbox), lösen sofort ein neues
+`remoteEntity` aus. Ein Kind, das darauf angewiesen ist, prüft in der Antwort auf `Register`
+`interface` ≥ 1.2.
 
 Ein Gateway hält genau eine Gegenstelle. Für mehrere Geräte (Steuerbox, Wallbox, Wärmepumpe) je ein
 Gateway anlegen.

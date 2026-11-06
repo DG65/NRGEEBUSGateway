@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.5.2-blue.svg)](library.json)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.5.3-blue.svg)](library.json)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Spenden-blue.svg)](https://paypal.me/DietmarGureth)
@@ -12,10 +12,10 @@ Verbindet Symcon über **EEBUS** (SHIP/SPINE) mit einem Gerät im Heimnetz, z. B
 Steuerbox des Netzbetreibers nach § 14a EnWG. Das Gateway hält Zertifikat und Kopplung und baut die
 verschlüsselte Verbindung auf. Was mit den Werten geschieht, entscheiden Fachmodule, die als
 Kind-Instanzen am Gateway hängen: **NRG-Stack SteuerboxHub** (Steuerbox nach § 14a, das Gateway ist
-dort das gesteuerte Gerät) und **NRG-Stack WPEEBUSHub** (Wärmepumpe, das Gateway ist dort das
-Energiemanagement). Je Gerät ein eigenes Gateway.
+dort das gesteuerte Gerät) und **NRG-Stack WPEEBUSHub** (Wärmepumpe) und **NRG-Stack ChargerEEBUSHub** (Wallbox) - bei
+diesen beiden ist das Gateway das Energiemanagement. Je Gerät ein eigenes Gateway.
 
-> Stand 0.5.2: frühe Fassung, geprüft gegen die Simulatoren aus
+> Stand 0.5.3: frühe Fassung, geprüft gegen die Simulatoren aus
 > [eebus-go](https://github.com/enbility/eebus-go) (Steuerbox `controlbox`, Verbraucher `evse` mit
 > Messwerten). Mit echten Geräten noch nicht getestet.
 

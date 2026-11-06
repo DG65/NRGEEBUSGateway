@@ -991,6 +991,14 @@ final class EEBGWSession
             if (!$this->hbAbonniert) {
                 $out .= $this->heartbeatAbonnieren();
             }
+            if ($erstes) {
+                // Geräteübersicht der Gegenstelle abonnieren: Kommen Entitäten später hinzu (Fahrzeug an der
+                // Wallbox angesteckt) oder fallen weg, meldet sie das per notify (wie spine-go beim Verbinden).
+                $out .= $this->spineSend(['addressSource' => $this->addr([0], 0), 'addressDestination' => ['entity' => [0], 'feature' => 0],
+                    'cmdClassifier' => 'call', 'ackRequest' => true], ['nodeManagementSubscriptionRequestCall' => ['subscriptionRequest' => [
+                    'clientAddress' => $this->addr([0], 0), 'serverAddress' => ['device' => $this->remoteDevice, 'entity' => [0], 'feature' => 0],
+                    'serverFeatureType' => 'NodeManagement']]]);
+            }
             if (!$erstes) {
                 $this->l('   remote device model changed');
             }

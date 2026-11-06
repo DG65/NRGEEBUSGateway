@@ -47,7 +47,7 @@ class EEBUSGateway extends IPSModule
     private const DATA_ZUM_KIND = '{12D8B8A8-3EE7-491F-A68A-D632304165D4}';
 
     // Version der Kind-Schnittstelle (Anmeldung/Daten/Ereignisse), .docs/kind-schnittstelle.md.
-    private const SCHNITTSTELLE = '1.1';
+    private const SCHNITTSTELLE = '1.2';
 
     private const TAKT_MS = 5000;
     // Kein SHIP-Abschluss binnen dieser Zeit (und keine ausstehende Freigabe): neu verbinden.
