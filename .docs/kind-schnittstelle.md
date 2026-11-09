@@ -1,4 +1,4 @@
-# EEBUSGateway – Kind-Schnittstelle 1.2
+# EEBUSGateway – Kind-Schnittstelle 1.3
 
 Wie sich ein Fachmodul (z. B. SteuerboxHub, später eine WP-Anbindung) als Kind-Instanz an das
 EEBUSGateway hängt. Das Gateway kennt keine Fachlogik: Es baut aus den Anmeldungen der Kinder den
@@ -148,6 +148,24 @@ Ab 1.2 (Gateway 0.5.3) abonniert das Gateway die Geräteübersicht (NodeManageme
 Entitäten, die nach dem Verbinden kommen oder gehen (Fahrzeug an der Wallbox), lösen sofort ein neues
 `remoteEntity` aus. Ein Kind, das darauf angewiesen ist, prüft in der Antwort auf `Register`
 `interface` ≥ 1.2.
+
+Ab 1.3 (Gateway 0.7.0) kann ein Kind in `Register` zusätzlich `extraEntities` angeben: eine Liste weiterer
+eigener Entitäten mit `type`, `useCases` und `features` (ohne `remote`). Sie stehen direkt hinter der
+Haupt-Entität, bekommen ebenfalls DeviceDiagnosis Server und Client, und ein `Read`/`Write` des Kinds
+läuft über das Client-Feature des passenden Typs - erst an der Haupt-Entität, sonst an der Zusatz-Entität.
+Vorbild ist evcc: Die Leistungsbegrenzung (LPC als Energy Guard) sitzt dort auf einer eigenen Entität
+vom Typ `GridGuard` mit LoadControl-, DeviceConfiguration- und DeviceDiagnosis-Client. Eine echte Vaillant
+(VR940f, 09.11.2026) setzt Grenzen nur um und hält die Verbindung nur, wenn LPC und Heartbeat von dort
+kommen; das Gateway abonniert den Heartbeat der Gegenstelle deshalb bevorzugt aus einer GridGuard-Entität.
+Ältere Gateways ignorieren `extraEntities`; ein Kind prüft `interface` ≥ 1.3.
+
+```json
+"extraEntities": [{
+  "type": "GridGuard",
+  "useCases": [{"actor": "EnergyGuard", "name": "limitationOfPowerConsumption", "version": "1.0.0", "subRevision": "release", "scenarios": [1,2,3,4]}],
+  "features": [{"type": "LoadControl", "role": "client"}, {"type": "DeviceConfiguration", "role": "client"}]
+}]
+```
 
 Ein Gateway hält genau eine Gegenstelle. Für mehrere Geräte (Steuerbox, Wallbox, Wärmepumpe) je ein
 Gateway anlegen.

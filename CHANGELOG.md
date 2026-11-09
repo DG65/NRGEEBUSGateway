@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 (Build 16, 09.11.2026)
+
+- Kind-Schnittstelle 1.3: Ein Kind kann mit `extraEntities` weitere eigene Entitäten anmelden (z. B. GridGuard).
+  Sie stehen direkt hinter seiner Haupt-Entität und bekommen eigenen DeviceDiagnosis Server und Client.
+  Schreiben und Lesen gehen automatisch vom passenden Client-Feature aus (`clientVon`), das Heartbeat-Abo
+  bevorzugt den Client einer GridGuard-Entität. Anlass: Slummis Vaillant (Forum 144877) beendet die Verbindung
+  jede Minute genau bei ihrem eigenen Heartbeat und setzt Leistungsgrenzen nicht um. evcc meldet LPC von einer
+  eigenen GridGuard-Entität an, dort läuft die Verbindung stabil.
+- Behoben: Nach einem Schließen durch die Gegenseite steht nicht mehr zusätzlich „im Schritt closed abgebrochen:
+  client socket no longer active“ im Meldungsprotokoll.
+
 ## 0.6.3 (Build 15, 09.11.2026)
 
 - Behoben: WebSocket-Ping alle 50 s (SHIP 4.2, wie ship-go `pingPeriod`). Slummis Vaillant (Forum 144877,

@@ -117,37 +117,78 @@ final class EEBGWSession
         $entities = [];
         $nr = 1;
         foreach ($anmeldungen as $owner => $a) {
-            $features = [];
-            $i = 1;
-            $hat = [];
-            foreach ((array)($a['features'] ?? []) as $f) {
-                $typ = (string)($f['type'] ?? '');
-                $rolle = (string)($f['role'] ?? 'server');
-                if ($typ === '') {
+            // Kind-Schnittstelle 1.3: zusätzliche Entitäten desselben Kinds (z. B. GridGuard für LPC wie evcc),
+            // direkt hinter seiner Haupt-Entität, ohne eigene Gegenstellen-Wünsche.
+            $teile = [['type' => (string)($a['type'] ?? 'CEM'), 'useCases' => (array)($a['useCases'] ?? []), 'features' => (array)($a['features'] ?? []),
+                'remote' => (array)($a['remote'] ?? []), 'zusatz' => false]];
+            foreach ((array)($a['extraEntities'] ?? []) as $z) {
+                $teile[] = ['type' => (string)($z['type'] ?? ''), 'useCases' => (array)($z['useCases'] ?? []), 'features' => (array)($z['features'] ?? []),
+                    'remote' => [], 'zusatz' => true];
+            }
+            foreach ($teile as $t) {
+                if ($t['type'] === '') {
                     continue;
                 }
-                $features[] = ['index' => $i++, 'type' => $typ, 'role' => $rolle, 'functions' => (array)($f['functions'] ?? [])];
-                $hat[$typ . '/' . $rolle] = true;
+                $entities[] = [
+                    'address' => $nr++,
+                    'owner' => (int)$owner,
+                    'type' => $t['type'],
+                    'useCases' => array_values($t['useCases']),
+                    'features' => self::featureListe($t['features']),
+                    // Rolle Energiemanagement: welche Entitäten der Gegenstelle das Kind ansprechen will.
+                    'remote' => $t['remote'],
+                    'zusatz' => $t['zusatz'],
+                ];
             }
-            if (!isset($hat['DeviceDiagnosis/server'])) {
-                // Betriebszustand dazu wie evcc: eine echte Vaillant fragt ihn nach dem Verbindungsaufbau ab.
-                $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'server',
-                    'functions' => ['deviceDiagnosisStateData' => ['read'], 'deviceDiagnosisHeartbeatData' => ['read']]];
-            }
-            if (!isset($hat['DeviceDiagnosis/client'])) {
-                $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'client', 'functions' => []];
-            }
-            $entities[] = [
-                'address' => $nr++,
-                'owner' => (int)$owner,
-                'type' => (string)($a['type'] ?? 'CEM'),
-                'useCases' => array_values((array)($a['useCases'] ?? [])),
-                'features' => $features,
-                // Rolle Energiemanagement: welche Entitäten der Gegenstelle das Kind ansprechen will.
-                'remote' => (array)($a['remote'] ?? []),
-            ];
         }
         return ['entities' => $entities];
+    }
+
+    /**
+     * Features einer Entität mit Indizes; dazu DeviceDiagnosis als Server (eigener Heartbeat) und Client
+     * (Heartbeat der Gegenstelle lesen), sofern das Kind sie nicht selbst anmeldet.
+     */
+    private static function featureListe(array $angemeldet): array
+    {
+        $features = [];
+        $i = 1;
+        $hat = [];
+        foreach ($angemeldet as $f) {
+            $typ = (string)($f['type'] ?? '');
+            $rolle = (string)($f['role'] ?? 'server');
+            if ($typ === '') {
+                continue;
+            }
+            $features[] = ['index' => $i++, 'type' => $typ, 'role' => $rolle, 'functions' => (array)($f['functions'] ?? [])];
+            $hat[$typ . '/' . $rolle] = true;
+        }
+        if (!isset($hat['DeviceDiagnosis/server'])) {
+            // Betriebszustand dazu wie evcc: eine echte Vaillant fragt ihn nach dem Verbindungsaufbau ab.
+            $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'server',
+                'functions' => ['deviceDiagnosisStateData' => ['read'], 'deviceDiagnosisHeartbeatData' => ['read']]];
+        }
+        if (!isset($hat['DeviceDiagnosis/client'])) {
+            $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'client', 'functions' => []];
+        }
+        return $features;
+    }
+
+    /**
+     * Client-Feature eines Kinds für einen Typ über alle seine Entitäten: [Entität, Index] oder null.
+     * Die Haupt-Entität geht vor; hat sie keins, die Zusatz-Entität (z. B. LoadControl am GridGuard).
+     */
+    public function clientVon(int $owner, string $typ): ?array
+    {
+        foreach ($this->model['entities'] as $e) {
+            if ($e['owner'] !== $owner) {
+                continue;
+            }
+            $i = $this->featureIndex($e['address'], $typ, 'client');
+            if ($i !== null) {
+                return [$e['address'], $i];
+            }
+        }
+        return null;
     }
 
     /** Feature-Index einer Entität für Typ/Rolle, null wenn nicht vorhanden. */
@@ -169,7 +210,7 @@ final class EEBGWSession
     public function entityOf(int $owner): ?int
     {
         foreach ($this->model['entities'] as $e) {
-            if ($e['owner'] === $owner) {
+            if ($e['owner'] === $owner && empty($e['zusatz'])) {
                 return $e['address'];
             }
         }
@@ -257,6 +298,12 @@ final class EEBGWSession
     /** Verbindung ist weg (Socket geschlossen). */
     public function getrennt(string $grund): void
     {
+        if ($this->phase === 'closed') {
+            // Die Gegenseite hat schon beendet und das ist gemeldet; dass danach der Socket weg ist, ist nur die Folge.
+            $this->phase = 'idle';
+            $this->buf = '';
+            return;
+        }
         if ($this->phase === 'data') {
             $this->ereignis(['event' => 'connection', 'state' => 'disconnected', 'grund' => $grund]);
         } elseif ($this->phase !== 'idle') {
@@ -1143,15 +1190,15 @@ final class EEBGWSession
     {
         $typ = (string)($fw['type'] ?? '');
         $server = $this->remoteFeature($re['entity'], $typ);
-        $client = $this->featureIndex($lokal['address'], $typ, 'client');
+        $client = $this->clientVon($lokal['owner'], $typ);
         if ($server === null) {
             return '';
         }
         if ($client === null) {
-            $this->l('   no local client feature ' . $typ . ' on entity ' . $lokal['address'] . ' - skipped');
+            $this->l('   no local client feature ' . $typ . ' for #' . $lokal['owner'] . ' - skipped');
             return '';
         }
-        $von = $this->addr([$lokal['address']], $client);
+        $von = $this->addr([$client[0]], $client[1]);
         $an = ['device' => $this->remoteDevice, 'entity' => $re['entity'], 'feature' => $server['feature']];
         $out = '';
         foreach (['subscribe' => ['nodeManagementSubscriptionRequestCall', 'subscriptionRequest'], 'bind' => ['nodeManagementBindingRequestCall', 'bindingRequest']] as $art => [$fn, $feld]) {
@@ -1228,8 +1275,7 @@ final class EEBGWSession
         if ($this->phase !== 'data') {
             return ['out' => '', 'msgCounter' => null, 'error' => 'not connected'];
         }
-        $lokal = $this->entityOf($owner);
-        $client = $lokal === null ? null : $this->featureIndex($lokal, $typ, 'client');
+        $client = $this->clientVon($owner, $typ);
         if ($client === null) {
             return ['out' => '', 'msgCounter' => null, 'error' => 'no client feature ' . $typ . ' registered for this instance'];
         }
@@ -1238,7 +1284,7 @@ final class EEBGWSession
             return ['out' => '', 'msgCounter' => null, 'error' => 'remote device has no feature ' . $typ . ' on entity ' . json_encode($entity)];
         }
         $ops = (array)($server['functions'][$fn] ?? []);
-        $von = $this->addr([$lokal], $client);
+        $von = $this->addr([$client[0]], $client[1]);
         $an = ['device' => $this->remoteDevice, 'entity' => $entity, 'feature' => $server['feature']];
         if ($art === 'read') {
             if (!in_array('read', $ops, true)) {
@@ -1315,13 +1361,16 @@ final class EEBGWSession
 
     private function heartbeatAbonnieren(): string
     {
-        // Eigener DeviceDiagnosis-Client: erste Entität, die einen hat.
+        // Eigener DeviceDiagnosis-Client: der einer GridGuard-Entität (Energy Guard für LPC, so abonniert evcc den
+        // Heartbeat einer Vaillant), sonst die erste Entität, die einen hat.
         $client = null;
         foreach ($this->model['entities'] as $e) {
             $i = $this->featureIndex($e['address'], 'DeviceDiagnosis', 'client');
-            if ($i !== null) {
+            if ($i !== null && ($client === null || $e['type'] === 'GridGuard')) {
                 $client = [$e['address'], $i];
-                break;
+                if ($e['type'] === 'GridGuard') {
+                    break;
+                }
             }
         }
         if ($client === null) {

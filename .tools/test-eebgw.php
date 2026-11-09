@@ -326,7 +326,6 @@ $rahmenLesen = function (string $b): array {
 };
 $fs = new EEBGWSession();
 $frame = new ReflectionMethod($fs, 'frame');
-$frame->setAccessible(true);
 $gross = "\x02" . str_repeat('{"spine":"x"}', 900);
 $r = $rahmenLesen($frame->invoke($fs, $gross));
 pruefe(count($r) === 3 && $r[0]['op'] === 2 && !$r[0]['fin'] && $r[1]['op'] === 0 && !$r[1]['fin'] && $r[2]['op'] === 0 && $r[2]['fin']
@@ -347,6 +346,27 @@ $r = $rahmenLesen($sende->invoke($ds, ['addressSource' => ['entity' => [0], 'fea
 $text = substr($r[0]['daten'], 1);
 pruefe(strpos($text, '{"data":[{"header":[{"protocolId":"ee1.0"}]},{"payload":{"datagram":[{"header":[') === 0 && json_decode($text) !== null
     && (EEBGWJson::parse($text)->data->payload->datagram->header->cmdClassifier ?? '') === 'read', 'SHIP-Daten: Nutzlast als Objekt wie ship-go/Vaillant, gültiges JSON, eigener Parser liest es');
+
+// Kind-Schnittstelle 1.3: Zusatz-Entität GridGuard (LPC wie evcc), Client-Suche über alle Entitäten des Kinds.
+$zm = EEBGWSession::buildModel([700 => ['type' => 'CEM', 'features' => [['type' => 'Measurement', 'role' => 'client']], 'remote' => ['entityTypes' => ['HeatPumpAppliance']],
+    'extraEntities' => [['type' => 'GridGuard', 'useCases' => [['actor' => 'EnergyGuard', 'name' => 'limitationOfPowerConsumption', 'version' => '1.0.0', 'scenarios' => [1, 2, 3, 4]]],
+        'features' => [['type' => 'LoadControl', 'role' => 'client'], ['type' => 'DeviceConfiguration', 'role' => 'client']]]]],
+    800 => ['type' => 'CEM', 'features' => []]]);
+pruefe(count($zm['entities']) === 3 && $zm['entities'][1]['type'] === 'GridGuard' && $zm['entities'][1]['owner'] === 700 && $zm['entities'][1]['address'] === 2
+    && $zm['entities'][1]['remote'] === [] && $zm['entities'][2]['address'] === 3, 'Zusatz-Entität GridGuard direkt hinter der Haupt-Entität, ohne eigene Gegenstellen-Wünsche');
+$zs = new EEBGWSession();
+$zs->model = $zm;
+pruefe($zs->entityOf(700) === 1 && $zs->clientVon(700, 'Measurement') === [1, 1] && $zs->clientVon(700, 'LoadControl') === [2, 1]
+    && $zs->clientVon(800, 'LoadControl') === null, 'Haupt-Entität bleibt Kind-Entität; LoadControl-Client kommt von der GridGuard-Entität');
+pruefe(count(array_filter($zm['entities'][1]['features'], function ($f) { return $f['type'] === 'DeviceDiagnosis'; })) === 2, 'GridGuard bekommt eigenen DeviceDiagnosis Server und Client');
+
+// Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.
+$cs = new EEBGWSession();
+$ph = new ReflectionProperty($cs, 'phase');
+$ph->setValue($cs, 'closed');
+$cs->getrennt('client socket no longer active');
+$ev = (new ReflectionProperty($cs, 'events'));
+pruefe($ev->getValue($cs) === [] && $cs->phase === 'idle', 'Socket weg nach Schließen der Gegenseite: keine zweite Abbruchmeldung');
 
 // Ohne Elterninstanz: Client Socket selbst anlegen (RequireParent wirkt live nicht).
 $ohne = new EEBUSGateway(10100);
@@ -373,7 +393,7 @@ pruefe(strpos($gw->GegenstellePruefen(), 'Adresse und Port') !== false, 'Gegenst
 
 $kind = new FakeKind(10003, 10002);
 $r = kindRuft($gw, 10003, ['Cmd' => 'Register', 'Entity' => lpcAnmeldung()]);
-pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.2', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.2');
+pruefe(($r['ok'] ?? false) && $r['entity'] === 1 && $r['interface'] === '1.3', 'Kind-Anmeldung: Entität 1, Schnittstelle 1.3');
 foreach (lpcDaten() as [$f, $fn, $d]) {
     $r = kindRuft($gw, 10003, ['Cmd' => 'SetData', 'Feature' => $f, 'Function' => $fn, 'Data' => $d]);
 }
@@ -729,7 +749,7 @@ if ($lv !== false) {
             ['type' => 'Measurement', 'subscribe' => true, 'read' => ['measurementDescriptionListData', 'measurementListData']],
         ]],
     ]]);
-    pruefe(($r['ok'] ?? false) && $r['interface'] === '1.2', 'Verbraucher-Kind angemeldet (Energy Guard + Monitoring Appliance)');
+    pruefe(($r['ok'] ?? false) && $r['interface'] === '1.3', 'Verbraucher-Kind angemeldet (Energy Guard + Monitoring Appliance)');
     $log = sys_get_temp_dir() . '/eebgw-verbraucher.log';
     $proc = proc_open([$bin, '-port', (string)$port, '-certpath', $vCert, '-keypath', $vKey, '-remoteski', $vgw->attrs['EigenerSki'], '-type', $typ],
         [1 => ['file', $log, 'w'], 2 => ['file', $log, 'a']], $pipes);
