@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 (Build 17, 09.11.2026)
+
+- Behoben: Ausgehende SPINE-Nachrichten haben ihre Felder jetzt in der Reihenfolge der SPINE-Spezifikation
+  (z. B. `timePeriod` vor `value` in `loadControlLimitData`, `number` vor `scale`). Slummis Vaillant (Forum 144877,
+  Dump 5) beantwortete eine aktive Leistungsgrenze mit `value` vor `timePeriod` gar nicht, eine aufgehobene
+  (ohne `timePeriod`) dagegen sofort.
+- `nodeManagementDestinationListData` wird angeboten und beantwortet (wie evcc/spine-go; die Vaillant liest es dort).
+- Debug „SHIP/SPINE“ zeigt WebSocket-Ping und -Pong in beide Richtungen, für die weiter offenen Abbrüche um xx:50.
+
 ## 0.7.0 (Build 16, 09.11.2026)
 
 - Kind-Schnittstelle 1.3: Ein Kind kann mit `extraEntities` weitere eigene Entitäten anmelden (z. B. GridGuard).

@@ -451,7 +451,12 @@ final class EEBGWSession
             $this->buf = substr($this->buf, $off + $len);
             $this->letzteDaten = $jetzt;
             if ($opcode === 0x9) {
+                $this->l('<- WebSocket ping (' . strlen($payload) . ' bytes), -> pong');
                 $out .= $this->frame($payload, 0xA);
+                continue;
+            }
+            if ($opcode === 0xA) {
+                $this->l('<- WebSocket pong');
                 continue;
             }
             if ($opcode === 0x8) {
@@ -637,6 +642,45 @@ final class EEBGWSession
         return ['device' => $this->localDevice, 'entity' => $entity, 'feature' => $feature];
     }
 
+    /**
+     * Feldreihenfolge nach SPINE-XSD (xs:sequence). Die EEBUS-JSON-Listenform ist geordnet; eebus-go liest
+     * jede Reihenfolge, eine echte Vaillant (Forum 144877, Dump 5, 09.11.2026) beantwortet eine aktive
+     * Leistungsgrenze mit „value“ vor „timePeriod“ gar nicht - mit isLimitActive=false (ohne timePeriod) schon.
+     */
+    private const XSD_REIHENFOLGE = [
+        'loadControlLimitData' => ['limitId', 'isLimitChangeable', 'isLimitActive', 'timePeriod', 'value'],
+        'deviceConfigurationKeyValueData' => ['keyId', 'value', 'isValueChangeable'],
+        'timePeriod' => ['startTime', 'endTime'],
+        'value' => ['number', 'scale'],
+        'scaledNumber' => ['number', 'scale'],
+        'deviceDiagnosisHeartbeatData' => ['timestamp', 'heartbeatCounter', 'heartbeatTimeout'],
+        'measurementData' => ['measurementId', 'valueType', 'timestamp', 'value', 'evaluationPeriod', 'valueSource', 'valueTendency', 'valueState'],
+    ];
+
+    public static function xsdOrdnen($wert, string $name = '')
+    {
+        if ($wert instanceof stdClass || !is_array($wert)) {
+            return $wert;
+        }
+        if (array_is_list($wert)) {
+            return array_map(function ($w) use ($name) { return self::xsdOrdnen($w, $name); }, $wert);
+        }
+        $ordnung = self::XSD_REIHENFOLGE[$name] ?? null;
+        if ($ordnung !== null) {
+            $neu = [];
+            foreach ($ordnung as $k) {
+                if (array_key_exists($k, $wert)) {
+                    $neu[$k] = $wert[$k];
+                }
+            }
+            $wert = $neu + $wert;
+        }
+        foreach ($wert as $k => $v) {
+            $wert[$k] = self::xsdOrdnen($v, (string)$k);
+        }
+        return $wert;
+    }
+
     private function spineSend(array $header, array $cmd): string
     {
         $header['msgCounter'] = ++$this->msgCounter;
@@ -652,6 +696,7 @@ final class EEBGWSession
         // Die SHIP-Nutzlast ist der SPINE-Text als Objekt ({"datagram":[…]}), nicht in EEBUS-Listenform
         // ([{"datagram":[…]}]) - so senden ship-go und die Geräte selbst. eebus-go liest beides, eine echte
         // Vaillant (Thread 144877, 09.11.2026) beendet bei der Listenform die Verbindung („Frame Error!“).
+        $cmd = self::xsdOrdnen($cmd);
         $spine = EEBGWJson::render(['datagram' => ['header' => $h, 'payload' => ['cmd' => [$cmd]]]]);
         $name = isset($cmd['function']) ? $cmd['function'] : (string)array_key_first($cmd);
         $this->l(sprintf('-> SPINE #%d %s %s', $this->msgCounter, $h['cmdClassifier'], $name));
@@ -815,6 +860,10 @@ final class EEBGWSession
                         return $this->discovery();
                     case 'nodeManagementUseCaseData':
                         return $this->useCaseData();
+                    case 'nodeManagementDestinationListData':
+                        // Wie evcc/spine-go; die Vaillant liest das nach dem Aufbau (evcc-Mitschnitt).
+                        return ['nodeManagementDestinationData' => [['deviceDescription' => ['deviceAddress' => ['device' => $this->localDevice],
+                            'deviceType' => $this->deviceType, 'networkFeatureSet' => 'smart']]]];
                     case 'nodeManagementSubscriptionData':
                         return ['subscriptionEntry' => array_map(function ($s, $i) {
                             return ['subscriptionId' => $i, 'clientAddress' => $s['client'],
@@ -879,7 +928,8 @@ final class EEBGWSession
                 $fset('nodeManagementDetailedDiscoveryData', ['read']), $fset('nodeManagementUseCaseData', ['read']),
                 $fset('nodeManagementSubscriptionData', ['read']), $fset('nodeManagementSubscriptionRequestCall', []),
                 $fset('nodeManagementSubscriptionDeleteCall', []), $fset('nodeManagementBindingData', ['read']),
-                $fset('nodeManagementBindingRequestCall', []), $fset('nodeManagementBindingDeleteCall', [])]),
+                $fset('nodeManagementBindingRequestCall', []), $fset('nodeManagementBindingDeleteCall', []),
+                $fset('nodeManagementDestinationListData', ['read'])]),
             $feat([0], 1, 'DeviceClassification', 'server', [$fset('deviceClassificationManufacturerData', ['read'])]),
         ];
         foreach ($this->model['entities'] as $e) {
@@ -1416,6 +1466,7 @@ final class EEBGWSession
         }
         if ($jetzt - $this->lastPing >= self::PING_INTERVALL_S) {
             $this->lastPing = $jetzt;
+            $this->l('-> WebSocket ping');
             $out .= $this->frame('', 0x9);
         }
         if ($jetzt - $this->lastOwnHb >= self::HEARTBEAT_INTERVALL_S) {

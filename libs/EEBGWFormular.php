@@ -55,6 +55,10 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.7.1' => [
+            '• Fix: power limits are now sent with their fields in the order of the EEBUS specification. A real Vaillant did not answer an active power limit at all before.',
+            '• The debug output now shows WebSocket ping and pong, to find the cause of the remaining disconnects.',
+        ],
         '0.7.0' => [
             '• 🛡️ New: application modules can register additional entities, e.g. a separate grid guard (GridGuard) for power limits, as evcc does. A real Vaillant heat pump accepts power limits only from there and otherwise closed the connection every minute.',
             '• The message log no longer shows a second abort entry after the remote device has closed the connection.',

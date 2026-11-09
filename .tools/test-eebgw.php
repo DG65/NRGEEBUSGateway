@@ -360,6 +360,14 @@ pruefe($zs->entityOf(700) === 1 && $zs->clientVon(700, 'Measurement') === [1, 1]
     && $zs->clientVon(800, 'LoadControl') === null, 'Haupt-Entität bleibt Kind-Entität; LoadControl-Client kommt von der GridGuard-Entität');
 pruefe(count(array_filter($zm['entities'][1]['features'], function ($f) { return $f['type'] === 'DeviceDiagnosis'; })) === 2, 'GridGuard bekommt eigenen DeviceDiagnosis Server und Client');
 
+// SPINE-Felder in XSD-Reihenfolge (Vaillant beantwortet aktive Grenze mit value vor timePeriod nicht).
+$geordnet = EEBGWSession::xsdOrdnen(['loadControlLimitListData' => ['loadControlLimitData' => [
+    ['limitId' => 0, 'isLimitActive' => true, 'value' => ['scale' => 0, 'number' => 4200], 'timePeriod' => ['endTime' => 'PT15M']]]]]);
+pruefe(array_keys($geordnet['loadControlLimitListData']['loadControlLimitData'][0]) === ['limitId', 'isLimitActive', 'timePeriod', 'value']
+    && array_keys($geordnet['loadControlLimitListData']['loadControlLimitData'][0]['value']) === ['number', 'scale'],
+    'Ausgehende SPINE-Felder in XSD-Reihenfolge (timePeriod vor value, number vor scale)');
+pruefe(EEBGWJson::render(EEBGWSession::xsdOrdnen(['x' => new stdClass()])) === EEBGWJson::render(['x' => new stdClass()]), 'Leere Objekte bleiben beim Ordnen erhalten');
+
 // Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.
 $cs = new EEBGWSession();
 $ph = new ReflectionProperty($cs, 'phase');
