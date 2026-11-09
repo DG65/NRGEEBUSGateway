@@ -8,7 +8,8 @@
   ],
   "url": "https://github.com/DG65/NRGEEBUSGateway",
   "parentRequirements": [
-    "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"
+    "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}",
+    "{C8792760-65CF-4C53-B5C7-A30FCC84FEFE}"
   ],
   "childRequirements": [
     "{12D8B8A8-3EE7-491F-A68A-D632304165D4}"

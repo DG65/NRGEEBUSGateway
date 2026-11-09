@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.2 (Build 14, 09.11.2026)
+
+- Behoben: Die SHIP-Datennachricht trägt die SPINE-Nutzlast jetzt als Objekt (`{"payload":{"datagram":[…]}}`)
+  statt in EEBUS-Listenform (`{"payload":[{"datagram":[…]}]}`), genau wie ship-go und die Geräte selbst. eebus-go
+  liest beides, eine echte Vaillant (Thread 144877 #6/#8) beendet bei der Listenform die Verbindung mit
+  1002 „Frame Error!“ oder 4500 „User close“ direkt nach der ersten Antwort des Gateways. Gefunden durch
+  Vergleich mit einem öffentlichen evcc-Mitschnitt gegen eine Vaillant (evcc-Issue 33733).
+- Richtigstellung zu 0.6.1: Die Geräteübersicht ist nur rund 3 KB groß, die Zerteilung in 4-KB-Rahmen greift
+  bei ihr gar nicht und war nicht die Ursache. Sie bleibt trotzdem, weil sie dem Verhalten von eebus-go entspricht.
+- Behoben: `parentRequirements` nennt jetzt auch den Server Socket. Bisher zeigte Symcon in der Server-Rolle die
+  Warnung „übergeordnete Instanz inkompatibel“, obwohl die Verbindung funktionierte.
+
 ## 0.6.1 (Build 13, 09.11.2026)
 
 - Behoben: Ausgehende WebSocket-Nachrichten über 4082 Byte werden in Folgerahmen zerteilt, wie gorilla/websocket

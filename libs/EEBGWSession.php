@@ -596,11 +596,13 @@ final class EEBGWSession
         if (isset($h['addressDestination']) && !isset($h['addressDestination']['device']) && $this->remoteDevice !== '') {
             $h['addressDestination'] = ['device' => $this->remoteDevice] + $h['addressDestination'];
         }
-        $nachricht = ['data' => ['header' => ['protocolId' => 'ee1.0'],
-            'payload' => ['datagram' => ['header' => $h, 'payload' => ['cmd' => [$cmd]]]]]];
+        // Die SHIP-Nutzlast ist der SPINE-Text als Objekt ({"datagram":[…]}), nicht in EEBUS-Listenform
+        // ([{"datagram":[…]}]) - so senden ship-go und die Geräte selbst. eebus-go liest beides, eine echte
+        // Vaillant (Thread 144877, 09.11.2026) beendet bei der Listenform die Verbindung („Frame Error!“).
+        $spine = EEBGWJson::render(['datagram' => ['header' => $h, 'payload' => ['cmd' => [$cmd]]]]);
         $name = isset($cmd['function']) ? $cmd['function'] : (string)array_key_first($cmd);
         $this->l(sprintf('-> SPINE #%d %s %s', $this->msgCounter, $h['cmdClassifier'], $name));
-        return $this->frame("\x02" . EEBGWJson::render($nachricht));
+        return $this->frame("\x02" . '{"data":[{"header":[{"protocolId":"ee1.0"}]},{"payload":' . $spine . '}]}');
     }
 
     private function onSpine(string $body, int $jetzt): string

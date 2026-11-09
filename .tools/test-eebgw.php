@@ -321,6 +321,16 @@ $fs->rolle = 'server';
 $r = $rahmenLesen($frame->invoke($fs, $gross));
 pruefe(count($r) === 3 && implode('', array_column($r, 'daten')) === $gross, 'WebSocket: Server-Rolle zerteilt unmaskiert ebenso');
 
+// SHIP-Datennachricht: Nutzlast als Objekt {"datagram":[…]} wie ship-go und echte Geräte (Vaillant schließt sonst).
+$ds = new EEBGWSession();
+$ds->localDevice = 'd:_n:Test';
+$sende = new ReflectionMethod($ds, 'spineSend');
+$r = $rahmenLesen($sende->invoke($ds, ['addressSource' => ['entity' => [0], 'feature' => 0], 'addressDestination' => ['entity' => [0], 'feature' => 0], 'cmdClassifier' => 'read'],
+    ['nodeManagementDetailedDiscoveryData' => new stdClass()]));
+$text = substr($r[0]['daten'], 1);
+pruefe(strpos($text, '{"data":[{"header":[{"protocolId":"ee1.0"}]},{"payload":{"datagram":[{"header":[') === 0 && json_decode($text) !== null
+    && (EEBGWJson::parse($text)->data->payload->datagram->header->cmdClassifier ?? '') === 'read', 'SHIP-Daten: Nutzlast als Objekt wie ship-go/Vaillant, gültiges JSON, eigener Parser liest es');
+
 // Ohne Elterninstanz: Client Socket selbst anlegen (RequireParent wirkt live nicht).
 $ohne = new EEBUSGateway(10100);
 $ohne->Create();
@@ -459,7 +469,8 @@ pruefe(strpos($daten['text'], ';FPH256:' . EEBGWPairing::fingerabdruck($pg->attr
 $fremd = EEBGWCert::erzeugen('Steuerbox');
 $ank = ['txtvers' => '1', 'parType' => 'fpSha256', 'forId' => $daten['shipId'], 'forPar' => $daten['fingerabdruck'], 'trustId' => 'Test-Steuerbox-1',
     'trustPar' => EEBGWPairing::fingerabdruck($fremd['cert']), 'trustCurve' => 'secp256r1', 'type' => 'addCu', 'trustNonce' => strtoupper(bin2hex(random_bytes(16))), 'alg' => 'hmacSha256'];
-$ank['digest'] = EEBGWPairing::digest('00' . substr($daten['geheimnis'], 2), $ank);
+// Erstes Byte sicher ändern (nicht fest „00“: beginnt das zufällige Geheimnis damit, wäre der Nachweis richtig).
+$ank['digest'] = EEBGWPairing::digest(sprintf('%02x', hexdec(substr($daten['geheimnis'], 0, 2)) ^ 0xFF) . substr($daten['geheimnis'], 2), $ank);
 $txtListe = function (array $a) { $o = []; foreach ($a as $k => $v) { $o[] = $k . '=' . $v; } return $o; };
 $GLOBALS['MDNS']['_shippairing._tcp'] = [['Name' => 'Steuerbox', 'Host' => 'box.local', 'Port' => 4712, 'TXTRecords' => $txtListe($ank), 'IPv4' => ['192.0.2.10'], 'IPv6' => []]];
 $pg->PairingSuchen();

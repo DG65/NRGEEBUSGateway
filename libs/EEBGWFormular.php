@@ -46,6 +46,10 @@ trait EEBGWFormular
             '• Fix: large EEBUS messages are now split into WebSocket frames of at most 4 KB, like eebus-go does. A Vaillant heat pump closed the connection with “Frame Error” as soon as the gateway sent its device overview in one piece.',
             '• After changing the connection direction, “Replace socket to match the direction” creates the matching client or server socket - no more creating it by hand.',
         ],
+        '0.6.2' => [
+            '• Fix: SPINE messages now wrap their payload exactly like the reference software ({"payload":{"datagram":…}}). A real Vaillant heat pump closed the connection with “Frame Error” right after the gateway’s first reply - this was the actual cause.',
+            '• Fix: Symcon no longer shows the warning “parent instance incompatible” when the gateway is attached to a server socket.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';
