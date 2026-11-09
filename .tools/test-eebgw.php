@@ -291,6 +291,23 @@ $ev = $s->drainEvents();
 pruefe(($ev[0]['event'] ?? '') === 'heartbeat' && $ev[0]['state'] === 'lost', 'Heartbeat: Ausfall nach 120 s gemeldet (Ausfallgrenze greift im Kind)');
 $s->tick(1000 + 500);
 pruefe($s->drainEvents() === [], 'Heartbeat: Ausfall nur einmal gemeldet');
+// SHIP 4.2: WebSocket-Ping alle 50 s (Vaillant beendet sonst nach knapp 60 s mit „Frame Error!“).
+$ps = new EEBGWSession();
+$ps->model = $m;
+$ps->phase = 'data';
+$ps->verbundenSeit = 5000;
+$ps->lastOwnHb = 99999;
+$ohnePing = $ps->tick(5000 + EEBGWSession::PING_INTERVALL_S - 1);
+$mitPing = $ps->tick(5000 + EEBGWSession::PING_INTERVALL_S);
+pruefe($ohnePing === '' && strlen($mitPing) === 6 && (ord($mitPing[0]) & 0x0F) === 0x9 && (ord($mitPing[0]) & 0x80) && (ord($mitPing[1]) & 0x80),
+    'WebSocket-Ping (maskiert, leer) nach 50 s, nicht vorher');
+pruefe($ps->tick(5000 + EEBGWSession::PING_INTERVALL_S + 10) === '', 'Nächster Ping erst nach weiteren 50 s');
+$lese = new ReflectionMethod($ps, 'leseDaten');
+$fi = new ReflectionMethod($ps, 'featureIndex');
+$adr = $m['entities'][0]['address'];
+$idx = $fi->invoke($ps, $adr, 'DeviceDiagnosis', 'server');
+pruefe($lese->invoke($ps, [$adr], $idx, 'deviceDiagnosisStateData', 1) === ['operatingState' => 'normalOperation'], 'Betriebszustand lesbar (deviceDiagnosisStateData, fragt die Vaillant ab)');
+
 
 // Große Nachrichten in Folgerahmen ≤ RAHMEN_MAX (wie gorilla/websocket in eebus-go; Vaillant: 1002 „Frame Error!“).
 $rahmenLesen = function (string $b): array {

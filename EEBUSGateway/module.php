@@ -748,7 +748,13 @@ class EEBUSGateway extends IPSModule
                 $this->senden($out);
             }
             foreach ($s->drainLog() as $zeile) {
-                $this->SendDebug('SHIP/SPINE', $zeile, 0);
+                // Vollständige SPINE-Nachrichten in einem eigenen Debug-Kanal, damit die Übersicht lesbar bleibt
+                // (Ferndiagnose echter Geräte, z. B. warum eine Grenze nicht ankommt).
+                if (strncmp($zeile, 'JSON ', 5) === 0) {
+                    $this->SendDebug('SPINE-Inhalt', substr($zeile, 5, 8000), 0);
+                } else {
+                    $this->SendDebug('SHIP/SPINE', $zeile, 0);
+                }
             }
             $events = $s->drainEvents();
             if ($s->data != $datenVorher) {

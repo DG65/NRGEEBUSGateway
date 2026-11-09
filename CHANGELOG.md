@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.3 (Build 15, 09.11.2026)
+
+- Behoben: WebSocket-Ping alle 50 s (SHIP 4.2, wie ship-go `pingPeriod`). Slummis Vaillant (Forum 144877,
+  Dump 09.11.) beendete jede Verbindung knapp 60 s nach dem Aufbau mit 1002 „Frame Error!“.
+- Automatisch ergänzte DeviceDiagnosis-Server-Features bieten auch `deviceDiagnosisStateData` an
+  (`operatingState` `normalOperation`, wie evcc); die Vaillant fragt das nach dem Aufbau ab.
+- Debug-Kanal „SPINE-Inhalt“: vollständige SPINE-Nachrichten in beide Richtungen (bis 8000 Zeichen), die
+  Übersicht „SHIP/SPINE“ bleibt kurz.
+
 ## 0.6.2 (Build 14, 09.11.2026)
 
 - Behoben: Die SHIP-Datennachricht trägt die SPINE-Nutzlast jetzt als Objekt (`{"payload":{"datagram":[…]}}`)

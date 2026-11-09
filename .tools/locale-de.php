@@ -275,6 +275,9 @@ $de = [
     '• After changing the connection direction, “Replace socket to match the direction” creates the matching client or server socket - no more creating it by hand.' => '• Nach einem Wechsel der Verbindungsrichtung legt „Socket passend zur Richtung tauschen“ den passenden Client- oder Server Socket an - kein Anlegen von Hand mehr.',
     '• Fix: SPINE messages now wrap their payload exactly like the reference software ({"payload":{"datagram":…}}). A real Vaillant heat pump closed the connection with “Frame Error” right after the gateway’s first reply - this was the actual cause.' => '• Behoben: SPINE-Nachrichten verpacken ihre Nutzlast jetzt genau wie die Referenzsoftware ({"payload":{"datagram":…}}). Eine echte Vaillant-Wärmepumpe hat die Verbindung direkt nach der ersten Antwort des Gateways mit „Frame Error“ beendet - das war die eigentliche Ursache.',
     '• Fix: Symcon no longer shows the warning “parent instance incompatible” when the gateway is attached to a server socket.' => '• Behoben: Symcon zeigt am Server Socket nicht mehr die Warnung „übergeordnete Instanz inkompatibel“.',
+    '• Fix: the gateway now sends a WebSocket ping every 50 seconds as the SHIP specification requires. A real Vaillant closed the connection about every minute without it.' => '• Behoben: Das Gateway sendet jetzt alle 50 Sekunden einen WebSocket-Ping, wie es die SHIP-Spezifikation verlangt. Eine echte Vaillant hat die Verbindung ohne ihn etwa jede Minute beendet.',
+    '• The gateway answers queries for its operating state (like evcc).' => '• Das Gateway beantwortet Abfragen seines Betriebszustands (wie evcc).',
+    '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.' => '• Neuer Debug-Kanal „SPINE-Inhalt“ mit den vollständigen EEBUS-Nachrichten zur Ferndiagnose echter Geräte.',
 ];
 
 $ziel = dirname(__DIR__) . '/EEBUSGateway/locale.json';

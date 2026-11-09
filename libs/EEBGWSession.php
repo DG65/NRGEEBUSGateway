@@ -27,6 +27,9 @@ final class EEBGWSession
 {
     public const SPEC_VERSION = '1.3.0';
     public const HEARTBEAT_INTERVALL_S = 10;
+    // SHIP 4.2: WebSocket-Ping alle 50 s (Gegenstelle wartet höchstens 60 s), wie ship-go pingPeriod/pongWait.
+    // Live bei einer Vaillant (09.11.2026): ohne Ping beendet sie die Verbindung nach knapp 60 s mit „Frame Error!“.
+    public const PING_INTERVALL_S = 50;
     public const HEARTBEAT_TIMEOUT = 'PT30S';
     // LPC/LPP: fehlt der Heartbeat der Gegenstelle länger als 120 s, gilt die Ausfallgrenze.
     public const HEARTBEAT_VERLOREN_S = 120;
@@ -82,6 +85,7 @@ final class EEBGWSession
     public $bindings = [];
     public $hbCounter = 0;
     public $lastOwnHb = 0;
+    public $lastPing = 0;
     public $lastRemoteHb = 0;
     public $remoteHbTimeout = 0;
     public $hbAbonniert = false;
@@ -126,7 +130,9 @@ final class EEBGWSession
                 $hat[$typ . '/' . $rolle] = true;
             }
             if (!isset($hat['DeviceDiagnosis/server'])) {
-                $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'server', 'functions' => ['deviceDiagnosisHeartbeatData' => ['read']]];
+                // Betriebszustand dazu wie evcc: eine echte Vaillant fragt ihn nach dem Verbindungsaufbau ab.
+                $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'server',
+                    'functions' => ['deviceDiagnosisStateData' => ['read'], 'deviceDiagnosisHeartbeatData' => ['read']]];
             }
             if (!isset($hat['DeviceDiagnosis/client'])) {
                 $features[] = ['index' => $i++, 'type' => 'DeviceDiagnosis', 'role' => 'client', 'functions' => []];
@@ -238,7 +244,7 @@ final class EEBGWSession
         $war = $this->phase === 'data';
         foreach (['fehler' => '', 'fehlerVorlage' => '', 'fehlerWerte' => [], 'buf' => '', 'msgCounter' => 0, 'helloOk' => false, 'vertrauenAusstehend' => false,
             'remoteShipId' => '', 'remoteDevice' => '', 'remoteEntities' => [], 'remoteUseCases' => [], 'subscriptions' => [],
-            'bindings' => [], 'lastOwnHb' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
+            'bindings' => [], 'lastOwnHb' => 0, 'lastPing' => 0, 'lastRemoteHb' => 0, 'remoteHbTimeout' => 0, 'hbAbonniert' => false,
             'hbVerlorenGemeldet' => false, 'verbundenSeit' => 0, 'letzteDaten' => 0,
             'remoteData' => [], 'ausstehend' => [], 'remoteAngebunden' => [], 'fragment' => '', 'fragmentOpcode' => 0] as $k => $v) {
             $this->$k = $v;
@@ -602,11 +608,13 @@ final class EEBGWSession
         $spine = EEBGWJson::render(['datagram' => ['header' => $h, 'payload' => ['cmd' => [$cmd]]]]);
         $name = isset($cmd['function']) ? $cmd['function'] : (string)array_key_first($cmd);
         $this->l(sprintf('-> SPINE #%d %s %s', $this->msgCounter, $h['cmdClassifier'], $name));
+        $this->l('JSON -> ' . $spine);
         return $this->frame("\x02" . '{"data":[{"header":[{"protocolId":"ee1.0"}]},{"payload":' . $spine . '}]}');
     }
 
     private function onSpine(string $body, int $jetzt): string
     {
+        $this->l('JSON <- ' . trim($body, "\x00"));
         $d = EEBGWJson::parse(trim($body, "\x00"));
         $dg = $d->data->payload->datagram ?? null;
         if (!($dg instanceof stdClass) || !isset($dg->header)) {
@@ -785,6 +793,9 @@ final class EEBGWSession
         }
         if ($feat['type'] === 'DeviceDiagnosis' && $fn === 'deviceDiagnosisHeartbeatData') {
             return $this->heartbeatDaten($jetzt, false);
+        }
+        if ($feat['type'] === 'DeviceDiagnosis' && $fn === 'deviceDiagnosisStateData') {
+            return ['operatingState' => 'normalOperation'];
         }
         $daten = $this->data[$ent['address'] . '/' . $f][$fn] ?? null;
         // Noch keine Daten vom Kind: leere Liste statt Fehler (wie eebus-go bei leerem Feature).
@@ -1351,6 +1362,13 @@ final class EEBGWSession
             return '';
         }
         $out = '';
+        if ($this->lastPing === 0) {
+            $this->lastPing = $this->verbundenSeit > 0 ? $this->verbundenSeit : $jetzt;
+        }
+        if ($jetzt - $this->lastPing >= self::PING_INTERVALL_S) {
+            $this->lastPing = $jetzt;
+            $out .= $this->frame('', 0x9);
+        }
         if ($jetzt - $this->lastOwnHb >= self::HEARTBEAT_INTERVALL_S) {
             $this->lastOwnHb = $jetzt;
             $this->hbCounter++;

@@ -50,6 +50,11 @@ trait EEBGWFormular
             '• Fix: SPINE messages now wrap their payload exactly like the reference software ({"payload":{"datagram":…}}). A real Vaillant heat pump closed the connection with “Frame Error” right after the gateway’s first reply - this was the actual cause.',
             '• Fix: Symcon no longer shows the warning “parent instance incompatible” when the gateway is attached to a server socket.',
         ],
+        '0.6.3' => [
+            '• Fix: the gateway now sends a WebSocket ping every 50 seconds as the SHIP specification requires. A real Vaillant closed the connection about every minute without it.',
+            '• The gateway answers queries for its operating state (like evcc).',
+            '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';
