@@ -531,6 +531,33 @@ class EEBUSGateway extends IPSModule
         IPS_ApplyChanges($this->InstanceID);
     }
 
+    /**
+     * EEBGW_SocketTauschen($id): string — nach einem Richtungswechsel den passenden Socket anlegen: den bisherigen
+     * trennen und, wenn ihn das Gateway selbst angelegt hat und nichts anderes daran hängt, löschen.
+     */
+    public function SocketTauschen(): string
+    {
+        if ($this->elternPasst()) {
+            return '✅ ' . $this->t('The parent instance already matches the connection direction.');
+        }
+        $alt = $this->elternID();
+        $altName = IPS_GetName($alt);
+        IPS_DisconnectInstance($this->InstanceID);
+        $andere = array_filter(IPS_GetInstanceList(), function ($i) use ($alt) {
+            return $i !== $this->InstanceID && (int)(IPS_GetInstance($i)['ConnectionID'] ?? 0) === $alt;
+        });
+        $eigenerName = in_array($altName, [$this->t('EEBUS gateway client socket (%s)', IPS_GetName($this->InstanceID)),
+            $this->t('EEBUS gateway server socket (%s)', IPS_GetName($this->InstanceID))], true);
+        if ($andere === [] && $eigenerName) {
+            IPS_DeleteInstance($alt);
+            $hinweis = $this->t('The previous socket #%s was removed.', (string)$alt);
+        } else {
+            $hinweis = $this->t('The previous socket #%s was only disconnected; delete it yourself if it is no longer needed.', (string)$alt);
+        }
+        $this->VerbindungPruefen();
+        return '✅ ' . $this->t('Matching socket created and connected.') . "\n" . $hinweis;
+    }
+
     /** Fehlertext in der Sprache der Konsole (EEBGWFehler trägt eine übersetzbare Vorlage). */
     private function fehlerText(Throwable $e): string
     {
@@ -1388,6 +1415,8 @@ class EEBUSGateway extends IPSModule
                     ['caption' => 'The device connects to the gateway (e.g. Wolf Link)', 'value' => self::RICHTUNG_SERVER],
                 ]],
                 ['type' => 'Label', 'caption' => 'After changing the direction click “Apply”; the gateway then creates the matching socket (client or server socket) if none is attached.'],
+                ['type' => 'Button', 'caption' => 'Replace socket to match the direction', 'onClick' => 'echo EEBGW_SocketTauschen($id);', 'visible' => !$this->elternPasst(),
+                    'confirm' => 'This disconnects the current socket and creates a matching one (outside this module). Continue?'],
                 ['type' => 'ValidationTextBox', 'name' => 'Host', 'caption' => 'Address of the remote device (IP or host name)', 'width' => '420px', 'visible' => !$server],
                 ['type' => 'NumberSpinner', 'name' => 'Port', 'caption' => 'Port (e.g. 4712, see the device manual)', 'minimum' => 0, 'maximum' => 65535, 'width' => '420px', 'visible' => !$server],
                 ['type' => 'NumberSpinner', 'name' => 'ServerPort', 'caption' => 'Port on which the gateway accepts the connection', 'minimum' => 1, 'maximum' => 65535, 'width' => '420px', 'visible' => $server],

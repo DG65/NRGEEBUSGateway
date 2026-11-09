@@ -42,6 +42,10 @@ trait EEBGWFormular
             '• 🔍 New: “Search the network” lists the EEBUS devices announced in the home network with SKI, address and port. A click on a device enters the values - no more guessing the port.',
             '• The message log now names the step and reason when an EEBUS connection is aborted or closed (once per new reason, not with every attempt).',
         ],
+        '0.6.1' => [
+            '• Fix: large EEBUS messages are now split into WebSocket frames of at most 4 KB, like eebus-go does. A Vaillant heat pump closed the connection with “Frame Error” as soon as the gateway sent its device overview in one piece.',
+            '• After changing the connection direction, “Replace socket to match the direction” creates the matching client or server socket - no more creating it by hand.',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';

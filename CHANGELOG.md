@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 (Build 13, 09.11.2026)
+
+- Behoben: Ausgehende WebSocket-Nachrichten über 4082 Byte werden in Folgerahmen zerteilt, wie gorilla/websocket
+  in eebus-go (4096-Byte-Schreibpuffer). Erste echte Vaillant (Thread 144877 #6) schloss die Verbindung mit
+  1002 „Frame Error!“ direkt nach der eigenen Antwort auf nodeManagementDetailedDiscoveryData.
+- Neu: „Socket passend zur Richtung tauschen“ (mit Rückfrage), wenn die Elterninstanz nicht zur gewählten
+  Richtung passt. Der bisherige Socket wird getrennt und nur gelöscht, wenn ihn das Gateway selbst angelegt
+  hat und nichts anderes daran hängt.
+
 ## 0.6.0 (Build 12, 09.11.2026)
 
 - Neu: „Netzwerk durchsuchen“ listet die per DNS-SD (`_ship._tcp`) angekündigten EEBUS-Geräte mit Marke,

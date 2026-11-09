@@ -265,6 +265,14 @@ $de = [
     'Port' => 'Port',
     '• 🔍 New: “Search the network” lists the EEBUS devices announced in the home network with SKI, address and port. A click on a device enters the values - no more guessing the port.' => '• 🔍 Neu: „Netzwerk durchsuchen“ listet die im Heimnetz angekündigten EEBUS-Geräte mit SKI, Adresse und Port. Ein Klick auf ein Gerät trägt die Werte ein - kein Port-Raten mehr.',
     '• The message log now names the step and reason when an EEBUS connection is aborted or closed (once per new reason, not with every attempt).' => '• Das Meldungsprotokoll nennt jetzt Schritt und Grund, wenn eine EEBUS-Verbindung abbricht oder getrennt wird (einmal je neuem Grund, nicht bei jedem Versuch).',
+    'The parent instance already matches the connection direction.' => 'Die übergeordnete Instanz passt bereits zur Verbindungsrichtung.',
+    'The previous socket #%s was removed.' => 'Der bisherige Socket #%s wurde entfernt.',
+    'The previous socket #%s was only disconnected; delete it yourself if it is no longer needed.' => 'Der bisherige Socket #%s wurde nur getrennt; lösche ihn selbst, wenn er nicht mehr gebraucht wird.',
+    'Matching socket created and connected.' => 'Passender Socket angelegt und verbunden.',
+    'Replace socket to match the direction' => 'Socket passend zur Richtung tauschen',
+    'This disconnects the current socket and creates a matching one (outside this module). Continue?' => 'Damit wird der bisherige Socket getrennt und ein passender angelegt (außerhalb dieses Moduls). Fortfahren?',
+    '• Fix: large EEBUS messages are now split into WebSocket frames of at most 4 KB, like eebus-go does. A Vaillant heat pump closed the connection with “Frame Error” as soon as the gateway sent its device overview in one piece.' => '• Behoben: Große EEBUS-Nachrichten werden jetzt wie bei eebus-go in WebSocket-Rahmen von höchstens 4 KB zerteilt. Eine Vaillant-Wärmepumpe hat die Verbindung mit „Frame Error“ beendet, sobald das Gateway seine Geräteübersicht in einem Stück geschickt hat.',
+    '• After changing the connection direction, “Replace socket to match the direction” creates the matching client or server socket - no more creating it by hand.' => '• Nach einem Wechsel der Verbindungsrichtung legt „Socket passend zur Richtung tauschen“ den passenden Client- oder Server Socket an - kein Anlegen von Hand mehr.',
 ];
 
 $ziel = dirname(__DIR__) . '/EEBUSGateway/locale.json';

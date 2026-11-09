@@ -292,6 +292,35 @@ pruefe(($ev[0]['event'] ?? '') === 'heartbeat' && $ev[0]['state'] === 'lost', 'H
 $s->tick(1000 + 500);
 pruefe($s->drainEvents() === [], 'Heartbeat: Ausfall nur einmal gemeldet');
 
+// Große Nachrichten in Folgerahmen ≤ RAHMEN_MAX (wie gorilla/websocket in eebus-go; Vaillant: 1002 „Frame Error!“).
+$rahmenLesen = function (string $b): array {
+    $r = [];
+    $p = 0;
+    while ($p < strlen($b)) {
+        $b0 = ord($b[$p]); $b1 = ord($b[$p + 1]); $len = $b1 & 0x7F; $p += 2;
+        if ($len === 126) { $len = unpack('n', substr($b, $p, 2))[1]; $p += 2; } elseif ($len === 127) { $len = unpack('J', substr($b, $p, 8))[1]; $p += 8; }
+        $mask = ($b1 & 0x80) ? substr($b, $p, 4) : '';
+        $p += strlen($mask);
+        $nutz = substr($b, $p, $len); $p += $len;
+        if ($mask !== '') { $nutz = substr($nutz ^ str_repeat($mask, intdiv($len, 4) + 1), 0, $len); }
+        $r[] = ['fin' => (bool)($b0 & 0x80), 'op' => $b0 & 0x0F, 'daten' => $nutz];
+    }
+    return $r;
+};
+$fs = new EEBGWSession();
+$frame = new ReflectionMethod($fs, 'frame');
+$frame->setAccessible(true);
+$gross = "\x02" . str_repeat('{"spine":"x"}', 900);
+$r = $rahmenLesen($frame->invoke($fs, $gross));
+pruefe(count($r) === 3 && $r[0]['op'] === 2 && !$r[0]['fin'] && $r[1]['op'] === 0 && !$r[1]['fin'] && $r[2]['op'] === 0 && $r[2]['fin']
+    && max(array_map(function ($x) { return strlen($x['daten']); }, $r)) <= EEBGWSession::RAHMEN_MAX
+    && implode('', array_column($r, 'daten')) === $gross, 'WebSocket: große Nachricht in maskierte Folgerahmen ≤ 4082 Byte zerteilt, Inhalt vollständig');
+$r = $rahmenLesen($frame->invoke($fs, "\x02" . str_repeat('a', EEBGWSession::RAHMEN_MAX - 1)));
+pruefe(count($r) === 1 && $r[0]['fin'], 'WebSocket: Nachricht bis zur Grenze bleibt ein Rahmen');
+$fs->rolle = 'server';
+$r = $rahmenLesen($frame->invoke($fs, $gross));
+pruefe(count($r) === 3 && implode('', array_column($r, 'daten')) === $gross, 'WebSocket: Server-Rolle zerteilt unmaskiert ebenso');
+
 // Ohne Elterninstanz: Client Socket selbst anlegen (RequireParent wirkt live nicht).
 $ohne = new EEBUSGateway(10100);
 $ohne->Create();

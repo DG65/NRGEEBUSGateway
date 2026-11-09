@@ -264,10 +264,31 @@ final class EEBGWSession
         $this->buf = '';
     }
 
+    /**
+     * Nutzlast eines WebSocket-Rahmens höchstens so groß wie bei eebus-go: gorilla/websocket schreibt über einen
+     * 4096-Byte-Puffer (minus 14 Byte Kopf) und zerteilt größere Nachrichten in Folgerahmen. Live bei einer Vaillant
+     * gesehen (09.11.2026): Die Geräteübersicht in einem einzigen großen Rahmen beendet sie mit 1002 „Frame Error!“.
+     */
+    public const RAHMEN_MAX = 4082;
+
+    /** Nachricht als WebSocket-Rahmen; Datennachrichten über RAHMEN_MAX werden in Folgerahmen zerteilt (RFC 6455 5.4). */
     private function frame(string $payload, int $opcode = 0x2): string
     {
         $len = strlen($payload);
-        $h = chr(0x80 | $opcode);
+        if ($opcode >= 0x8 || $len <= self::RAHMEN_MAX) {
+            return $this->rahmen($payload, $opcode, true);   // Steuerrahmen werden nie zerteilt
+        }
+        $out = '';
+        for ($pos = 0; $pos < $len; $pos += self::RAHMEN_MAX) {
+            $out .= $this->rahmen(substr($payload, $pos, self::RAHMEN_MAX), $pos === 0 ? $opcode : 0x0, $pos + self::RAHMEN_MAX >= $len);
+        }
+        return $out;
+    }
+
+    private function rahmen(string $payload, int $opcode, bool $fin): string
+    {
+        $len = strlen($payload);
+        $h = chr(($fin ? 0x80 : 0x00) | $opcode);
         if ($len < 126) {
             $h .= chr($len);
         } elseif ($len < 65536) {
