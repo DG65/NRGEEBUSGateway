@@ -49,7 +49,7 @@ class EEBUSGateway extends IPSModule
     // Version der Kind-Schnittstelle (Anmeldung/Daten/Ereignisse), .docs/kind-schnittstelle.md.
     private const SCHNITTSTELLE = '1.3';
 
-    private const TAKT_MS = 5000;
+    private const TAKT_MS = 2000;   // eigener Heartbeat alle 2 s (wie evcc)
     // Kein SHIP-Abschluss binnen dieser Zeit (und keine ausstehende Freigabe): neu verbinden.
     private const AUFBAU_FRIST_S = 30;
     // In der Datenphase ohne jedes Lebenszeichen der Gegenstelle: neu verbinden.

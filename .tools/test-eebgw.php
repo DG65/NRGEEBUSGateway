@@ -368,6 +368,11 @@ pruefe(array_keys($geordnet['loadControlLimitListData']['loadControlLimitData'][
     'Ausgehende SPINE-Felder in XSD-Reihenfolge (timePeriod vor value, number vor scale)');
 pruefe(EEBGWJson::render(EEBGWSession::xsdOrdnen(['x' => new stdClass()])) === EEBGWJson::render(['x' => new stdClass()]), 'Leere Objekte bleiben beim Ordnen erhalten');
 
+// Eigener Heartbeat wie evcc: alle 2 s, Frist PT4S; der Gateway-Takt läuft dafür alle 2 s.
+$hb = (new ReflectionMethod(EEBGWSession::class, 'heartbeatDaten'))->invoke(new EEBGWSession(), 1000, false);
+pruefe(EEBGWSession::HEARTBEAT_INTERVALL_S === 2 && $hb['heartbeatTimeout'] === 'PT4S'
+    && (new ReflectionClassConstant(EEBUSGateway::class, 'TAKT_MS'))->getValue() === 2000, 'Heartbeat wie evcc: alle 2 s mit Frist PT4S, Takt 2 s');
+
 // Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.
 $cs = new EEBGWSession();
 $ph = new ReflectionProperty($cs, 'phase');

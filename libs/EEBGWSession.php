@@ -26,11 +26,13 @@ require_once __DIR__ . '/EEBGWJson.php';
 final class EEBGWSession
 {
     public const SPEC_VERSION = '1.3.0';
-    public const HEARTBEAT_INTERVALL_S = 10;
+    // Eigener Heartbeat wie evcc/eebus-go: alle 2 s mit Frist 4 s. Eine echte Vaillant (Forum 144877) trennte bei
+    // 10 s/PT30S jede Minute in ihrem eigenen Takt, mit evcc läuft sie stabil.
+    public const HEARTBEAT_INTERVALL_S = 2;
     // SHIP 4.2: WebSocket-Ping alle 50 s (Gegenstelle wartet höchstens 60 s), wie ship-go pingPeriod/pongWait.
     // Live bei einer Vaillant (09.11.2026): ohne Ping beendet sie die Verbindung nach knapp 60 s mit „Frame Error!“.
     public const PING_INTERVALL_S = 50;
-    public const HEARTBEAT_TIMEOUT = 'PT30S';
+    public const HEARTBEAT_TIMEOUT = 'PT4S';
     // LPC/LPP: fehlt der Heartbeat der Gegenstelle länger als 120 s, gilt die Ausfallgrenze.
     public const HEARTBEAT_VERLOREN_S = 120;
 

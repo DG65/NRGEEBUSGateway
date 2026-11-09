@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2 (Build 18, 09.11.2026)
+
+- Eigener Heartbeat wie evcc/eebus-go alle 2 s mit Frist `PT4S` (bisher 10 s/`PT30S`), der Gateway-Takt läuft
+  dafür alle 2 s statt 5 s. Versuch für Slummis Vaillant (Forum 144877, Dump 6): Sie trennt die Verbindung weiter
+  jede Minute in ihrem eigenen Takt, obwohl Ping/Pong klappt und die Leistungsbegrenzung seit 0.7.1 wirkt; mit evcc
+  läuft sie stabil, der Heartbeat-Takt ist der letzte bekannte Unterschied.
+
 ## 0.7.1 (Build 17, 09.11.2026)
 
 - Behoben: Ausgehende SPINE-Nachrichten haben ihre Felder jetzt in der Reihenfolge der SPINE-Spezifikation
