@@ -252,7 +252,10 @@ final class EEBGWSession
     public function getrennt(string $grund): void
     {
         if ($this->phase === 'data') {
-            $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
+            $this->ereignis(['event' => 'connection', 'state' => 'disconnected', 'grund' => $grund]);
+        } elseif ($this->phase !== 'idle') {
+            // Abbruch vor dem Datenaustausch: nur fürs Meldungsprotokoll, nicht an die Kinder.
+            $this->ereignis(['event' => 'abbruch', 'phase' => $this->phase, 'grund' => $grund]);
         }
         if ($this->phase !== 'idle') {
             $this->l('Connection closed: ' . $grund);
@@ -417,7 +420,9 @@ final class EEBGWSession
         $this->fehlerVorlage = $vorlage;
         $this->fehlerWerte = $werte;
         if ($this->phase === 'data') {
-            $this->ereignis(['event' => 'connection', 'state' => 'disconnected']);
+            $this->ereignis(['event' => 'connection', 'state' => 'disconnected', 'grund' => $text]);
+        } elseif ($this->phase !== 'idle') {
+            $this->ereignis(['event' => 'abbruch', 'phase' => $this->phase, 'grund' => $text]);
         }
         $this->phase = 'error';
     }

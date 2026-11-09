@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 (Build 12, 09.11.2026)
+
+- Neu: „Netzwerk durchsuchen“ listet die per DNS-SD (`_ship._tcp`) angekündigten EEBUS-Geräte mit Marke,
+  Modell, Typ, SKI, Adresse und Port. Ein Klick trägt Adresse, Port und SKI ins Formular ein (bestätigt mit
+  „Übernehmen“). Anlass: erster Bericht mit echter Wärmepumpe (Vaillant), Port musste geraten werden.
+- Meldungsprotokoll: Abbruch des Verbindungsaufbaus mit Schritt und Grund (nur bei neuem Grund), Trennung
+  einer bestehenden Verbindung mit Grund.
+
 ## 0.5.3 (Build 11, 06.11.2026)
 
 - Rolle Energiemanagement: Das Gateway abonniert jetzt die Geräteübersicht der Gegenstelle. Entitäten, die

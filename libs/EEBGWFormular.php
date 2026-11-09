@@ -38,6 +38,10 @@ trait EEBGWFormular
             '• TLS for this direction is done by the gateway itself (mandatory EEBUS cipher, client certificate required); the server socket only passes the bytes through.',
             '• Fix: large EEBUS messages split by the remote device into several WebSocket frames are now put back together.',
         ],
+        '0.6.0' => [
+            '• 🔍 New: “Search the network” lists the EEBUS devices announced in the home network with SKI, address and port. A click on a device enters the values - no more guessing the port.',
+            '• The message log now names the step and reason when an EEBUS connection is aborted or closed (once per new reason, not with every attempt).',
+        ],
     ];
 
     private static $EEBGW_REPO_URL     = 'https://github.com/DG65/NRGEEBUSGateway';

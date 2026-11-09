@@ -330,6 +330,74 @@ class EEBUSGateway extends IPSModule
         return $out;
     }
 
+    /** TXT-Einträge einer DNS-SD-Ankündigung ("k=v") als Liste mit kleingeschriebenen Schlüsseln. */
+    private static function txtFelder(array $eintrag): array
+    {
+        $txt = [];
+        foreach ((array)($eintrag['TXTRecords'] ?? []) as $zeile) {
+            $zeile = is_array($zeile) ? (string)($zeile['Value'] ?? '') : (string)$zeile;
+            if (strpos($zeile, '=') !== false) {
+                [$k, $v] = explode('=', $zeile, 2);
+                $txt[strtolower($k)] = $v;
+            }
+        }
+        return $txt;
+    }
+
+    /**
+     * EEBGW_NetzwerkSuchen($id): string — EEBUS-Geräte im Netzwerk suchen (_ship._tcp über die DNS-SD-Instanz),
+     * wie evcc mit SKI, Marke, Modell, Adresse und Port. Die Auswahl übernimmt EEBGW_NetzwerkUebernehmen.
+     */
+    public function NetzwerkSuchen(): string
+    {
+        $dnssd = $this->dnssdInstanz();
+        if ($dnssd === 0 || !function_exists('ZC_QueryServiceType')) {
+            return '⛔ ' . $this->t('No DNS-SD instance found in Symcon; the gateway cannot search the network.');
+        }
+        $eigen = $this->ReadAttributeString('EigenerSki');
+        $zeilen = [];
+        foreach ($this->dnssdSuchen($dnssd, '_ship._tcp') as $eintrag) {
+            $txt = self::txtFelder((array)$eintrag);
+            $ski = EEBGWCert::normalisieren((string)($txt['ski'] ?? ''));
+            if ($ski === '' || $ski === $eigen) {
+                continue;   // ohne SKI nicht verwendbar; die eigene Ankündigung nicht anbieten
+            }
+            $adresse = (string)(((array)($eintrag['IPv4'] ?? []))[0] ?? ($eintrag['Host'] ?? ''));
+            $zeilen[$ski] = [
+                // Symcon liefert den vollen Namen („X._ship._tcp.local“); ohne Marke/Modell nur den Teil vor dem Diensttyp.
+                'Geraet' => trim(($txt['brand'] ?? '') . ' ' . ($txt['model'] ?? '')) ?: (string)preg_replace('/\._ship\._tcp.*$/', '', (string)($eintrag['Name'] ?? '?')),
+                'Typ' => (string)($txt['type'] ?? ''),
+                'SKI' => EEBGWCert::lesbar($ski),
+                'Adresse' => $adresse,
+                'Port' => (int)($eintrag['Port'] ?? 0),
+            ];
+        }
+        $zeilen = array_values($zeilen);
+        $this->SendDebug('Netzwerk', (string)json_encode($zeilen), 0);
+        $this->UpdateFormField('Netzwerk', 'values', (string)json_encode($zeilen));
+        $this->UpdateFormField('Netzwerk', 'visible', $zeilen !== []);
+        if ($zeilen === []) {
+            return 'ℹ️ ' . $this->t('No EEBUS device found in the network. Is EEBUS enabled in the device (app, web interface)? Is it in the same network segment as Symcon?');
+        }
+        return '✅ ' . $this->t('%s EEBUS device(s) found. Click on your device in the list to apply address, port and SKI.', (string)count($zeilen));
+    }
+
+    /** EEBGW_NetzwerkUebernehmen($id, $Zeile): string — gewählte Zeile der Suche ins Formular übernehmen (der Nutzer bestätigt mit „Übernehmen“). */
+    public function NetzwerkUebernehmen(string $Zeile): string
+    {
+        $z = json_decode($Zeile, true);
+        if (!is_array($z) || empty($z['SKI'])) {
+            return '⛔ ' . $this->t('Please select a device in the list first.');
+        }
+        $this->UpdateFormField('ErwarteterSki', 'value', (string)$z['SKI']);
+        if ($this->serverRolle()) {
+            return '✅ ' . $this->t('SKI %s entered. Click “Apply”; the gateway then accepts only this device.', (string)$z['SKI']);
+        }
+        $this->UpdateFormField('Host', 'value', (string)($z['Adresse'] ?? ''));
+        $this->UpdateFormField('Port', 'value', (int)($z['Port'] ?? 0));
+        return '✅ ' . $this->t('Address %s, port %s and SKI %s entered. Click “Apply”, then “Check remote device”.', (string)($z['Adresse'] ?? ''), (string)($z['Port'] ?? ''), (string)$z['SKI']);
+    }
+
     /** Timer: Ankündigungen der Gegenstelle suchen, Nachweis prüfen, danach koppeln. */
     public function PairingSuchen(): void
     {
@@ -1219,10 +1287,23 @@ class EEBUSGateway extends IPSModule
     private function ereignisVerteilen(array $e): void
     {
         $art = (string)($e['event'] ?? '');
+        if ($art === 'abbruch') {
+            // Abbruch vor dem Datenaustausch: protokollieren, wenn sich Grund oder Schritt ändert (nicht bei jedem Versuch).
+            $schluessel = $e['phase'] . '|' . $e['grund'];
+            if ($this->GetBuffer('LetzterAbbruch') !== $schluessel) {
+                $this->SetBuffer('LetzterAbbruch', $schluessel);
+                $this->LogMessage($this->t('EEBUS connection setup aborted in step %s: %s', (string)$e['phase'], (string)$e['grund']), KL_WARNING);
+            }
+            return;
+        }
         if ($art === 'connection') {
+            if ($e['state'] === 'connected') {
+                $this->SetBuffer('LetzterAbbruch', '');
+            }
             $this->LogMessage($e['state'] === 'connected'
                 ? $this->t('EEBUS connection established (remote device %s).', (string)($e['shipId'] ?? '?'))
-                : $this->t('EEBUS connection closed.'), $e['state'] === 'connected' ? KL_MESSAGE : KL_WARNING);
+                : (!empty($e['grund']) ? $this->t('EEBUS connection closed: %s', (string)$e['grund']) : $this->t('EEBUS connection closed.')),
+                $e['state'] === 'connected' ? KL_MESSAGE : KL_WARNING);
         } elseif ($art === 'write') {
             $this->LogMessage($this->t('Write command from the remote device for %s, instance #%s: %s', $e['feature'] . '/' . $e['function'], (string)$e['owner'], (string)json_encode($e['changes'])), KL_MESSAGE);
         } elseif ($art === 'heartbeat' && $e['state'] === 'lost') {
@@ -1296,7 +1377,7 @@ class EEBUSGateway extends IPSModule
                 . (isset($info['geprueft']) ? ', ' . $this->t('checked on %s', date($this->t('Y-m-d H:i'), (int)$info['geprueft'])) : '')
                 . (!empty($info['chiffre']) ? ' (' . $info['protokoll'] . ', ' . $info['chiffre'] . ')' : '');
         } else {
-            $gegenZeile = self::fest('ℹ️ No remote device set yet. Enter address and port, click “Apply”, then “Check remote device”.');
+            $gegenZeile = self::fest('ℹ️ No remote device set yet. Search the network (or enter address and port), click “Apply”, then “Check remote device”.');
         }
 
         $verbindung = [
@@ -1325,6 +1406,24 @@ class EEBUSGateway extends IPSModule
                     ],
                 ],
                 ['type' => 'CheckBox', 'name' => 'Aktiv', 'caption' => 'Connection enabled'],
+            ],
+        ];
+
+        // Netzwerksuche: Liste ohne Eigenschaft, deshalb im Aktionsbereich (IRHub-Befund); füllt die Felder oben.
+        $suche = [
+            'type' => 'ExpansionPanel', 'bereich' => 'actions', 'expanded' => $gegenSki === '', 'caption' => '🔍  Search the network',
+            'items' => [
+                ['type' => 'Label', 'caption' => 'Most EEBUS devices announce themselves in the network. The search lists them with SKI, address and port; a click on a device enters these values above.'],
+                ['type' => 'Button', 'caption' => 'Search the network for EEBUS devices', 'onClick' => 'echo EEBGW_NetzwerkSuchen($id);'],
+                ['type' => 'List', 'name' => 'Netzwerk', 'caption' => 'EEBUS devices found', 'visible' => false, 'rowCount' => 5,
+                    'onClick' => 'echo EEBGW_NetzwerkUebernehmen($id, json_encode($Netzwerk));',
+                    'columns' => [
+                        ['caption' => 'Device', 'name' => 'Geraet', 'width' => '220px'],
+                        ['caption' => 'Type', 'name' => 'Typ', 'width' => '160px'],
+                        ['caption' => 'SKI', 'name' => 'SKI', 'width' => 'auto'],
+                        ['caption' => 'Address', 'name' => 'Adresse', 'width' => '130px'],
+                        ['caption' => 'Port', 'name' => 'Port', 'width' => '70px'],
+                    ], 'values' => []],
             ],
         ];
 
@@ -1399,6 +1498,6 @@ class EEBUSGateway extends IPSModule
             ]),
         ];
 
-        return ['gegenstelle' => $verbindung, 'gateway' => $gateway, 'zustand' => $zustand];
+        return ['gegenstelle' => $verbindung, 'suche' => $suche, 'gateway' => $gateway, 'zustand' => $zustand];
     }
 }

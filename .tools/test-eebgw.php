@@ -361,7 +361,28 @@ $gw->props['FormLayout'] = '[]';
 $gw->form = [];
 $antwort = $gw->ResetFormLayout();
 $werte = json_decode($gw->form['FormLayout']['values'] ?? '[]', true);
-pruefe(count($werte) === 3 && $werte[0]['Key'] === 'gegenstelle' && $werte[2]['Pos'] === 3 && !$werte[1]['Hidden'] && strpos($antwort, 'Übernehmen') !== false, 'Aufbau: Zurücksetzen per UpdateFormField, ohne Speichern');
+pruefe(count($werte) === 4 && $werte[0]['Key'] === 'gegenstelle' && $werte[1]['Key'] === 'suche' && $werte[3]['Pos'] === 4 && !$werte[1]['Hidden'] && strpos($antwort, 'Übernehmen') !== false, 'Aufbau: Zurücksetzen per UpdateFormField, ohne Speichern');
+// Netzwerksuche (_ship._tcp): Liste füllen, eigene Ankündigung und Einträge ohne SKI auslassen, Auswahl übernehmen.
+$GLOBALS['MDNS']['_ship._tcp'] = [
+    ['Name' => 'VR940f', 'Host' => 'vr940f.local', 'Port' => 4769, 'IPv4' => ['192.0.2.40'], 'IPv6' => [],
+        'TXTRecords' => ['txtvers=1', 'id=Vaillant-VR940f-1', 'ski=AB12CD34EF56AB12CD34EF56AB12CD34EF56AB12', 'brand=Vaillant', 'model=VR940f', 'type=HeatPumpAppliance']],
+    ['Name' => 'Eigenes', 'Host' => 'symcon.local', 'Port' => 4712, 'IPv4' => ['192.0.2.2'], 'IPv6' => [],
+        'TXTRecords' => [['Value' => 'ski=' . $gw->attrs['EigenerSki']], ['Value' => 'brand=NRG-Stack']]],
+    ['Name' => 'Wolf Link._ship._tcp.local', 'Host' => 'wolf.local', 'Port' => 4712, 'IPv4' => ['192.0.2.41'], 'IPv6' => [], 'TXTRecords' => ['ski=0011223344556677889900112233445566778899']],
+    ['Name' => 'OhneSki', 'Host' => 'x.local', 'Port' => 1, 'IPv4' => [], 'IPv6' => [], 'TXTRecords' => ['txtvers=1']],
+];
+$gw->form = [];
+$antwort = $gw->NetzwerkSuchen();
+$liste = json_decode($gw->form['Netzwerk']['values'] ?? '[]', true);
+pruefe(count($liste) === 2 && $liste[1]['Geraet'] === 'Wolf Link' && $liste[0]['Geraet'] === 'Vaillant VR940f' && $liste[0]['Adresse'] === '192.0.2.40' && $liste[0]['Port'] === 4769
+    && $gw->form['Netzwerk']['visible'] === true && strpos($antwort, '2 EEBUS') !== false, 'Netzwerksuche: Gerät mit Marke/Modell, ohne Marke der Kurzname, eigene Ankündigung und Eintrag ohne SKI ausgelassen');
+$antwort = $gw->NetzwerkUebernehmen(json_encode($liste[0]));
+pruefe(($gw->form['Host']['value'] ?? '') === '192.0.2.40' && ($gw->form['Port']['value'] ?? 0) === 4769
+    && EEBGWCert::normalisieren($gw->form['ErwarteterSki']['value'] ?? '') === 'ab12cd34ef56ab12cd34ef56ab12cd34ef56ab12' && strpos($antwort, 'Gegenstelle prüfen') !== false,
+    'Netzwerksuche: Auswahl trägt Adresse, Port und SKI per UpdateFormField ein (Eigenschaften bleiben unverändert)');
+pruefe(strpos($gw->NetzwerkUebernehmen('null'), '⛔') === 0, 'Netzwerksuche: ohne Auswahl Hinweis statt Fehler');
+$GLOBALS['MDNS']['_ship._tcp'] = [];
+pruefe(strpos($gw->NetzwerkSuchen(), 'Kein EEBUS-Gerät') !== false && $gw->form['Netzwerk']['visible'] === false, 'Netzwerksuche: leeres Netz mit Hinweis');
 $gw->props['FormLayout'] = 'kaputt';
 $namen2 = array_map(function ($c) { return $c[0]; }, $captions($gw));
 pruefe(array_search('🔌  Gegenstelle', $namen2, true) < array_search('📡  Zustand', $namen2, true), 'Aufbau: ungültiger Inhalt fällt auf Standard zurück');

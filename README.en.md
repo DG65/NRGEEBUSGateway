@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.5.3-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.6.0-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -16,14 +16,15 @@ happens with the values is decided by application modules attached as child inst
 **NRG-Stack WPEEBUSHub** for heat pumps and **NRG-Stack ChargerEEBUSHub** for wallboxes (the gateway
 acts as energy management for both). One gateway per device.
 
-> Version 0.5.3: early version, tested against the simulators from
+> Version 0.6.0: early version, tested against the simulators from
 > [eebus-go](https://github.com/enbility/eebus-go) (control box `controlbox`, consumer `evse` with
 > measurements). Not yet tested with real devices.
 
 ## Setup
 
 1. Create an instance "NRG-Stack EEBUS-Gateway" (the client socket is created along with it).
-2. Enter address and port of the remote device, click "Apply".
+2. Start the search under "Search the network" and click your device - address, port and SKI are
+   entered. Without an announcement in the network enter address and port manually. Then click "Apply".
 3. **Check remote device**: the gateway fetches the remote certificate and shows its SKI. If it
    matches the SKI the device itself shows, click "Trust this SKI". Alternatively enter the SKI
    beforehand; then only this exact device is accepted.
@@ -68,7 +69,8 @@ Some metering point operators pair control box and energy management via the SHI
 
 - Server role (the device connects, e.g. Wolf Link) only tested against the simulator; the gateway does
   TLS itself for it, because Symcon's server socket does not pass the client certificate to the module.
-- Without the SHIP Pairing Service, address and port are entered manually (no general device discovery).
+- The network search only finds devices announcing themselves via DNS-SD (`_ship._tcp`); if the device
+  address changes later, it has to be entered again.
 - No PIN pairing.
 
 ## For developers of application modules
