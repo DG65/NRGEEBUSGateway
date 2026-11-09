@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3 (Build 19, 10.11.2026)
+
+- Behoben: Steht der Client Socket im Fehlerstatus, baut das Gateway die Verbindung jetzt selbst neu auf (mit
+  wachsender Wartezeit 5, 10, 20 … s bis 5 min, Meldung einmal im Meldungsprotokoll). Bisher wurde nur bei aktivem
+  Socket neu verbunden; das Gateway blieb dann stehen, bis „Verbindung aktiv“ aus- und wieder eingeschaltet
+  wurde (Slummi, Forum 144877 #22).
+- 0.7.2 (Heartbeat alle 2 s) hat die minütlichen Abbrüche der Vaillant nicht beseitigt; bleibt trotzdem wie evcc.
+
 ## 0.7.2 (Build 18, 09.11.2026)
 
 - Eigener Heartbeat wie evcc/eebus-go alle 2 s mit Frist `PT4S` (bisher 10 s/`PT30S`), der Gateway-Takt läuft

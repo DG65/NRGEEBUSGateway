@@ -834,7 +834,8 @@ class EEBUSGateway extends IPSModule
             $out = $s->tick($jetzt);
             $stand = json_decode($this->ReadAttributeString('Stand'), true) ?: [];
             $eltern = $this->elternID();
-            $elternAktiv = $eltern > 0 && IPS_GetInstance($eltern)['InstanceStatus'] === IS_ACTIVE;
+            $elternStatus = $eltern > 0 ? (int)IPS_GetInstance($eltern)['InstanceStatus'] : 0;
+            $elternAktiv = $elternStatus === IS_ACTIVE;
             if ($this->serverRolle()) {
                 // Server-Rolle: Das Gerät verbindet sich selbst; hängende oder stille Verbindungen trennen.
                 $haengt = !$s->istVerbunden() && $s->phase !== 'idle' && !$s->vertrauenAusstehend
@@ -846,7 +847,15 @@ class EEBUSGateway extends IPSModule
                 }
                 return $out;
             }
-            if ($elternAktiv && in_array($s->phase, ['idle', 'closed', 'error'], true)) {
+            if ($elternStatus >= IS_EBASE && $this->elternPasst() && !$s->istVerbunden()) {
+                // Client Socket im Fehlerstatus (z. B. nach einem Abbruch der Gegenstelle): Symcon versucht es dann
+                // nicht immer selbst wieder. Live gesehen (Vaillant, 09.11.2026): das Gateway blieb stehen, bis
+                // „Gegenstelle verbinden“ aus- und wieder eingeschaltet wurde. Dasselbe jetzt selbst, mit Wartezeit.
+                if ((int)$this->GetBuffer('Versuche') === 0) {
+                    $this->LogMessage($this->t('The client socket reports an error (status %s) - re-establishing the connection.', (string)$elternStatus), KL_MESSAGE);
+                }
+                $neuVerbinden = true;
+            } elseif ($elternAktiv && in_array($s->phase, ['idle', 'closed', 'error'], true)) {
                 // Socket offen, aber keine (oder eine beendete) Sitzung: neu aufbauen.
                 $neuVerbinden = true;
             } elseif ($elternAktiv && !$s->istVerbunden() && !$s->vertrauenAusstehend

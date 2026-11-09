@@ -55,6 +55,9 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.7.3' => [
+            '• Fix: if the client socket reports an error, the gateway now re-establishes the connection by itself (with growing pauses). Before, it stayed disconnected until “Connection enabled” was switched off and on again.',
+        ],
         '0.7.2' => [
             '• The gateway now sends its heartbeat every 2 seconds like the reference software, as a test for a Vaillant heat pump that keeps closing the connection once a minute.',
         ],

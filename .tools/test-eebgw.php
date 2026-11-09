@@ -20,6 +20,7 @@ const KR_READY = 10103;
 const IPS_KERNELMESSAGE = 10100;
 const IM_CHANGESTATUS = 10505;
 const IS_ACTIVE = 102;
+const IS_EBASE = 200;
 const KL_MESSAGE = 10201;
 const KL_NOTIFY = 10203;
 const KL_WARNING = 10204;
@@ -372,6 +373,28 @@ pruefe(EEBGWJson::render(EEBGWSession::xsdOrdnen(['x' => new stdClass()])) === E
 $hb = (new ReflectionMethod(EEBGWSession::class, 'heartbeatDaten'))->invoke(new EEBGWSession(), 1000, false);
 pruefe(EEBGWSession::HEARTBEAT_INTERVALL_S === 2 && $hb['heartbeatTimeout'] === 'PT4S'
     && (new ReflectionClassConstant(EEBUSGateway::class, 'TAKT_MS'))->getValue() === 2000, 'Heartbeat wie evcc: alle 2 s mit Frist PT4S, Takt 2 s');
+
+// Client Socket im Fehlerstatus: das Gateway baut selbst neu auf (bisher nur bei aktivem Socket).
+$fsock = new FakeSocket(10051);
+$fgw = new EEBUSGateway(10052);
+$fgw->parentId = 10051;
+$fgw->Create();
+$fgw->props['Host'] = '192.0.2.1';
+$fgw->props['Port'] = 4712;
+$fgw->attrs['GegenstelleZertifikat'] = "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n";
+$fgw->ApplyChanges();
+$fsock->status = 200;
+$fsock->config['Open'] = true;
+$fgw->Takt();
+pruefe($fsock->status === 102 && $fsock->config['Open'] === true && (int)$fgw->buffers['Versuche'] === 1,
+    'Client Socket im Fehlerstatus: Gateway öffnet ihn selbst neu (Versuch 1)');
+$fsock->status = 200;
+$fgw->Takt();
+pruefe($fsock->status === 200 && (int)$fgw->buffers['Versuche'] === 1, 'Zweiter Versuch erst nach der Wartezeit');
+$fgw->buffers['NaechsterVersuch'] = '0';
+$fgw->Takt();
+pruefe($fsock->status === 102 && (int)$fgw->buffers['Versuche'] === 2, 'Nach der Wartezeit nächster Versuch');
+unset($GLOBALS['INST'][10051], $GLOBALS['INST'][10052]);
 
 // Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.
 $cs = new EEBGWSession();
