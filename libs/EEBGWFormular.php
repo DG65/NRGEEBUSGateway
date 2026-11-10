@@ -55,6 +55,9 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.7.4' => [
+            '• Fix: the Symcon console no longer reports an “incompatible parent instance” when the gateway is attached to a server socket. The gateway now tells the console which socket matches the connection direction.',
+        ],
         '0.7.3' => [
             '• Fix: if the client socket reports an error, the gateway now re-establishes the connection by itself (with growing pauses). Before, it stayed disconnected until “Connection enabled” was switched off and on again.',
         ],

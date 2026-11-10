@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.4 (Build 20, 10.11.2026)
+
+- Behoben: Symcons Konsole meldet am Server Socket keine „inkompatible übergeordnete Instanz“ mehr. Das Gateway
+  nennt der Konsole über `GetCompatibleParents()` (ab Symcon 8.2) je nach Verbindungsrichtung den passenden Socket;
+  bisher leitete sie den Client Socket aus `RequireParent()` ab. Der Hinweis in 0.6.2 („Warnung behoben“) traf
+  nicht zu (Slummi, Forum 144877 #24).
+- Befund #24: In der Server-Richtung läuft Slummis Vaillant stabil; die minütlichen Abbrüche gibt es nur, wenn das
+  Gateway sich zur Wärmepumpe verbindet. Empfehlung für Vaillant: Server-Richtung.
+
 ## 0.7.3 (Build 19, 10.11.2026)
 
 - Behoben: Steht der Client Socket im Fehlerstatus, baut das Gateway die Verbindung jetzt selbst neu auf (mit

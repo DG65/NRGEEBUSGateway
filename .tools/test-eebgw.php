@@ -394,6 +394,11 @@ pruefe($fsock->status === 200 && (int)$fgw->buffers['Versuche'] === 1, 'Zweiter 
 $fgw->buffers['NaechsterVersuch'] = '0';
 $fgw->Takt();
 pruefe($fsock->status === 102 && (int)$fgw->buffers['Versuche'] === 2, 'Nach der Wartezeit nächster Versuch');
+$cp = json_decode($fgw->GetCompatibleParents(), true);
+$fgw->props['Richtung'] = 1;
+$cpServer = json_decode($fgw->GetCompatibleParents(), true);
+pruefe($cp === ['type' => 'require', 'moduleIDs' => ['{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}']]
+    && $cpServer['moduleIDs'] === ['{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}'], 'Konsole: passender Socket je Richtung (GetCompatibleParents)');
 unset($GLOBALS['INST'][10051], $GLOBALS['INST'][10052]);
 
 // Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.

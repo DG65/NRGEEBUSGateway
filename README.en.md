@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.7.3-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.7.4-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -16,7 +16,7 @@ happens with the values is decided by application modules attached as child inst
 **NRG-Stack WPEEBUSHub** for heat pumps and **NRG-Stack ChargerEEBUSHub** for wallboxes (the gateway
 acts as energy management for both). One gateway per device.
 
-> Version 0.7.3: tested against the simulators from
+> Version 0.7.4: tested against the simulators from
 > [eebus-go](https://github.com/enbility/eebus-go) (control box `controlbox`, consumer `evse` with
 > measurements) and on a real Vaillant heat pump (energy management role).
 
@@ -33,7 +33,10 @@ acts as energy management for both). One gateway per device.
 
 ### The device connects by itself (e.g. Wolf Link)
 
-Some devices only open the connection themselves and accept none. Then:
+Some devices only open the connection themselves and accept none. This direction is also recommended for
+**Vaillant heat pumps**: if the gateway connects to the Vaillant, it closes the connection every minute; if the
+Vaillant connects to the gateway, it runs stable (beta test 10.11.2026). One gateway per device; with several
+gateways, each needs its own port. Then:
 
 1. Under “Remote device” choose **“The device connects to the gateway”**, check the port (default
    4712), “Apply”. The gateway creates a server socket.
@@ -67,7 +70,7 @@ Some metering point operators pair control box and energy management via the SHI
 
 ## Limits of this version
 
-- Server role (the device connects, e.g. Wolf Link) only tested against the simulator; the gateway does
+- Server role (the device connects, e.g. Wolf Link) tested against the simulator and on a real Vaillant; the gateway does
   TLS itself for it, because Symcon's server socket does not pass the client certificate to the module.
 - The network search only finds devices announcing themselves via DNS-SD (`_ship._tcp`); if the device
   address changes later, it has to be entered again.

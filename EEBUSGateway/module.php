@@ -100,6 +100,16 @@ class EEBUSGateway extends IPSModule
         $this->RequireParent(self::CLIENT_SOCKET);
     }
 
+    /**
+     * Passende Elterninstanz für die Konsole (ab Symcon 8.2): je nach Verbindungsrichtung Client oder Server Socket.
+     * Ohne diese Angabe meldete die Konsole am Server Socket „inkompatible übergeordnete Instanz“ (Forum 144877 #24),
+     * obwohl der Datenfluss passt.
+     */
+    public function GetCompatibleParents()
+    {
+        return (string)json_encode(['type' => 'require', 'moduleIDs' => [$this->serverRolle() ? self::SERVER_SOCKET : self::CLIENT_SOCKET]]);
+    }
+
     public function ApplyChanges()
     {
         parent::ApplyChanges();
