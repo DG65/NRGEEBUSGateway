@@ -132,6 +132,13 @@ class EEBUSGateway extends IPSModule
         $this->zertifikatSicherstellen();
         $this->elternBeobachten();
         $this->elternKonfigurieren();
+        // Nach einem Neuladen ohne Zwischenspeicher die Kinder über eine verlorene Verbindung informieren.
+        $stand = json_decode($this->ReadAttributeString('Stand'), true) ?: [];
+        if (($stand['phase'] ?? '') === 'data') {
+            $this->mitSitzung(function (EEBGWSession $s) {
+                return '';
+            });
+        }
         $this->SetTimerInterval('Takt', $this->ReadPropertyBoolean('Aktiv') ? self::TAKT_MS : 0);
         $pairing = json_decode($this->ReadAttributeString('PairingStand'), true) ?: [];
         $this->SetTimerInterval('Pairing', !empty($pairing['aktiv']) ? self::PAIRING_TAKT_MS : 0);
@@ -753,6 +760,7 @@ class EEBUSGateway extends IPSModule
         try {
             $s = $this->sitzungLaden();
             $this->tls = $this->serverRolle() ? $this->tlsLaden() : null;
+            $this->verloreneSitzungMelden($s);
             $datenVorher = $s->data;
             $ergebnis = $aktion($s);
             $out = is_string($ergebnis) ? $ergebnis : (string)($ergebnis['out'] ?? '');
@@ -788,6 +796,24 @@ class EEBUSGateway extends IPSModule
             $this->ereignisVerteilen($e);
         }
         return $rueckgabe;
+    }
+
+    /**
+     * Zwischenspeicher verloren (z. B. nach einem Modul-Update, Forum 144877 #29): Der bleibende Stand sagt noch
+     * „verbunden“, die geladene Sitzung nicht mehr. Dann haben die Kinder die Trennung nie erfahren; einmal melden.
+     * In der Server-Richtung ist die TLS-Verbindung damit nicht mehr nutzbar: trennen, das Gerät verbindet sich neu.
+     */
+    private function verloreneSitzungMelden(EEBGWSession $s): void
+    {
+        $stand = json_decode($this->ReadAttributeString('Stand'), true) ?: [];
+        if (($stand['phase'] ?? '') !== 'data' || $s->phase === 'data') {
+            return;
+        }
+        $this->SendDebug('Session', 'session state lost, children informed', 0);
+        $s->verlorenMelden('session state lost (module reloaded)');
+        if ($this->serverRolle() && $this->serverClient() !== []) {
+            $this->serverTrennen();
+        }
     }
 
     private function sitzungStarten(): void
@@ -976,6 +1002,12 @@ class EEBUSGateway extends IPSModule
                 if ($typ === 1) {
                     return '';
                 }
+            }
+            if ($this->tls === null && $s->phase !== 'idle') {
+                // TLS-Zustand verloren (Zwischenspeicher leer), die Sitzung lief aber: nicht mehr lesbar, trennen.
+                $s->getrennt('TLS state lost');
+                $this->serverTrennen();
+                return '';
             }
             if ($this->tls === null || $bytes === '') {
                 return '';

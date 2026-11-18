@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 (Build 22, 18.11.2026)
+
+- Behoben: Gehen die Zwischenspeicher `Sitzung` (oder `Tls` in der Server-Richtung) beim Neuladen verloren, etwa
+  nach einem Modul-Update oder Neustart, bekamen die Kinder kein `connection`/`disconnected`, weil die neue Sitzung
+  in `idle` startete. Jetzt vergleicht das Gateway mit dem bleibenden Attribut `Stand`: Stand noch `data`, Sitzung
+  nicht mehr, dann einmal `disconnected` an die Kinder (auch in `ApplyChanges`), in der Server-Richtung zusätzlich
+  trennen, damit das Gerät sauber neu verbindet. Läuft eine Server-Sitzung ohne TLS-Zustand weiter, wird ebenfalls
+  getrennt. Befund Slummi, Forum 144877 #29 (WPEEBUSHub zeigte „Erreichbar“, Gateway wartete).
+
 ## 0.8.0 (Build 21, 18.11.2026)
 
 - Store-Review (Stable 0.7.4 abgelehnt): Das Gateway legt seinen Socket nicht mehr selbst an, tauscht ihn nicht

@@ -432,6 +432,23 @@ $ohne->ApplyChanges();
 pruefe($ohne->parentId === 0 && !isset($ohne->timers['Verbindung']) && $ohne->status === 207, 'Ohne Socket: nichts angelegt, Status 207');
 unset($GLOBALS['INST'][10100]);
 
+// Zwischenspeicher nach Modul-Update leer, bleibender Stand noch „verbunden“ (Forum 144877 #29): Kinder einmal informieren.
+$vsock = new FakeSocket(10111);
+$vgw0 = new EEBUSGateway(10110);
+$vgw0->parentId = 10111;
+$vgw0->Create();
+$vgw0->attrs['Stand'] = json_encode(['phase' => 'data', 'phaseSeit' => time() - 600, 'remoteShipId' => 'Vaillant']);
+$vgw0->ApplyChanges();
+$trenn = array_values(array_filter($vgw0->anKinder, function ($e) {
+    return ($e['Event'] ?? '') === 'connection' && ($e['state'] ?? '') === 'disconnected';
+}));
+$stand0 = json_decode($vgw0->attrs['Stand'], true);
+pruefe(count($trenn) === 1 && ($stand0['phase'] ?? '') !== 'data', 'Sitzung verloren: Kinder bekommen einmal „disconnected“, Stand nicht mehr verbunden');
+$vgw0->anKinder = [];
+$vgw0->ApplyChanges();
+pruefe($vgw0->anKinder === [], 'Kein zweites „disconnected“ beim nächsten Übernehmen');
+unset($GLOBALS['INST'][10110], $GLOBALS['INST'][10111]);
+
 $wz = new ReflectionMethod(EEBUSGateway::class, 'wartezeit');
 pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [5, 10, 40, 300], 'Wiederverbindung: Wartezeit 5/10/40 s, höchstens 5 min');
 

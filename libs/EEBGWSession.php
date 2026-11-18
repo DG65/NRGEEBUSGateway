@@ -297,6 +297,13 @@ final class EEBGWSession
         }
     }
 
+    /** Die vorige Sitzung ging verloren (Zwischenspeicher leer), war aber verbunden: Kindern die Trennung melden. */
+    public function verlorenMelden(string $grund): void
+    {
+        $this->ereignis(['event' => 'connection', 'state' => 'disconnected', 'grund' => $grund]);
+        $this->l('Connection lost: ' . $grund);
+    }
+
     /** Verbindung ist weg (Socket geschlossen). */
     public function getrennt(string $grund): void
     {
