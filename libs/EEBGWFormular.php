@@ -55,6 +55,9 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.8.2' => [
+            '• When the gateway connects to the device, it now waits 15 seconds after a disconnect before reconnecting, and then 15, 30, 60 … seconds up to 5 minutes between attempts (Vaillant recommends at least 15 seconds).',
+        ],
         '0.8.1' => [
             '• Fix: if the gateway loses its connection state when it is reloaded (e.g. after a module update), it now tells the application modules that the connection is gone. Before, a heat pump module could keep showing “reachable” while the gateway was waiting for the device.',
         ],

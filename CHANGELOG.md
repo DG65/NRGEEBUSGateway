@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 (Build 23, 19.11.2026)
+
+- Client-Richtung: Nach einem Verbindungsende wartet das Gateway 15 s bis zum ersten Neuverbinden (bisher sofort
+  im nächsten Takt), danach wachsend 15, 30, 60 … s bis 5 min (bisher 5, 10, 20 … s). Empfehlung von Vaillant/KEO
+  im evcc-Issue 30889 („nach close() mindestens 15 s warten“).
+- Geprüft und bewusst NICHT geändert: Der Client sendet nach dem `select` des Servers weiter sein eigenes `select`
+  (laut KEO nur Sache des Servers, SHIP 13.4.4.2.1). ship-go und evccs Fork (andig/ship-go) machen es genauso, ein
+  ship-go-Server bricht ohne dieses `select` ab, und evcc läuft damit an der Vaillant stabil.
+
 ## 0.8.1 (Build 22, 18.11.2026)
 
 - Behoben: Gehen die Zwischenspeicher `Sitzung` (oder `Tls` in der Server-Richtung) beim Neuladen verloren, etwa

@@ -62,6 +62,8 @@ class EEBUSGateway extends IPSModule
     private const STILLE_FRIST_S = 180;
     // Erst nach dieser Zeit ohne Verbindung meldet die Instanz einen Fehlerstatus.
     private const STOERUNG_NACH_S = 300;
+    // Pause vor dem ersten Neuverbinden nach einem Verbindungsende und Startwert der wachsenden Wartezeit.
+    private const ERSTE_PAUSE_S = 15;
 
     public function Create()
     {
@@ -911,8 +913,12 @@ class EEBUSGateway extends IPSModule
         });
         // Wachsende Wartezeit zwischen Versuchen: Live gesehen (27.10.2026), dass eine Gegenstelle eine
         // abgerissene Verbindung noch für aktiv hält und neue Versuche ablehnt — Anklopfen alle 5 s hilft
-        // dann nicht, sondern hält sie nur beschäftigt.
-        if ($neuVerbinden && $this->ReadPropertyBoolean('Aktiv') && time() >= (int)$this->GetBuffer('NaechsterVersuch')) {
+        // dann nicht, sondern hält sie nur beschäftigt. Auch der erste Versuch nach einem Verbindungsende wartet
+        // ERSTE_PAUSE_S (Vaillant/KEO, evcc-Issue 30889: nach close() mindestens 15 s bis zum Neuverbinden).
+        if ($neuVerbinden && $this->ReadPropertyBoolean('Aktiv') && (int)$this->GetBuffer('Versuche') === 0
+            && (int)$this->GetBuffer('NaechsterVersuch') === 0) {
+            $this->SetBuffer('NaechsterVersuch', (string)(time() + self::ERSTE_PAUSE_S));
+        } elseif ($neuVerbinden && $this->ReadPropertyBoolean('Aktiv') && time() >= (int)$this->GetBuffer('NaechsterVersuch')) {
             $versuche = (int)$this->GetBuffer('Versuche') + 1;
             $this->SetBuffer('Versuche', (string)$versuche);
             $this->SetBuffer('NaechsterVersuch', (string)(time() + self::wartezeit($versuche)));
@@ -1162,10 +1168,10 @@ class EEBUSGateway extends IPSModule
         return '✅ ' . $this->t('Announcement removed.');
     }
 
-    /** Wartezeit vor dem nächsten Verbindungsversuch: 5, 10, 20, … s, höchstens 5 Minuten. */
+    /** Wartezeit vor dem nächsten Verbindungsversuch: 15, 30, 60, … s, höchstens 5 Minuten. */
     private static function wartezeit(int $versuche): int
     {
-        return (int)min(300, 5 * (2 ** min(max($versuche - 1, 0), 6)));
+        return (int)min(300, self::ERSTE_PAUSE_S * (2 ** min(max($versuche - 1, 0), 5)));
     }
 
     private function standSpeichern(EEBGWSession $s): void

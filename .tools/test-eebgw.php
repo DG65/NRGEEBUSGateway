@@ -386,6 +386,10 @@ $fgw->ApplyChanges();
 $fsock->status = 200;
 $fsock->config['Open'] = true;
 $fgw->Takt();
+pruefe($fsock->status === 200 && (int)($fgw->buffers['Versuche'] ?? 0) === 0 && (int)$fgw->buffers['NaechsterVersuch'] >= time() + 14,
+    'Nach dem Verbindungsende erst 15 s Pause (Vaillant/KEO)');
+$fgw->buffers['NaechsterVersuch'] = (string)(time() - 1);
+$fgw->Takt();
 pruefe($fsock->status === 102 && $fsock->config['Open'] === true && (int)$fgw->buffers['Versuche'] === 1,
     'Client Socket im Fehlerstatus: Gateway öffnet ihn selbst neu (Versuch 1)');
 $fsock->status = 200;
@@ -450,7 +454,7 @@ pruefe($vgw0->anKinder === [], 'Kein zweites „disconnected“ beim nächsten �
 unset($GLOBALS['INST'][10110], $GLOBALS['INST'][10111]);
 
 $wz = new ReflectionMethod(EEBUSGateway::class, 'wartezeit');
-pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [5, 10, 40, 300], 'Wiederverbindung: Wartezeit 5/10/40 s, höchstens 5 min');
+pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [15, 30, 120, 300], 'Wiederverbindung: Wartezeit 15/30/120 s, höchstens 5 min');
 
 // Modul anlegen
 $sock = new FakeSocket(10001);
