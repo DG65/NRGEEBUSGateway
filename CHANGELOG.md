@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 (Build 21, 18.11.2026)
+
+- Store-Review (Stable 0.7.4 abgelehnt): Das Gateway legt seinen Socket nicht mehr selbst an, tauscht ihn nicht
+  mehr und stellt dessen feste Parameter nicht mehr ein. `RequireParent`, der Prüf-Timer `Verbindung`
+  (`VerbindungPruefen`) und `EEBGW_SocketTauschen` sind entfernt. Die Konsole legt den Socket über
+  `GetCompatibleParents()` an, jetzt mit fester Konfiguration: Client Socket mit SSL, eigenem Zertifikat,
+  Prüfung der Gegenstelle, ohne Hostprüfung; Server Socket ohne SSL, Port 4712 als Vorschlag.
+- Zur Laufzeit setzt das Gateway am Client Socket nur noch Ziel (Host, Port), Zertifikate und „Open“
+  (laut Review erlaubt bzw. von Dietmar so entschieden), am Server Socket nur „Open“.
+- Die Eigenschaft `ServerPort` entfällt; der Port wird im Server Socket eingestellt, die Ankündigung im
+  Netzwerk liest ihn von dort.
+- Neue Zustände: 206 (Socket-Einstellung passt nicht, Gateway hält den Socket geschlossen und nennt die
+  Einstellung im Formular), 207 (kein Socket angehängt). Zeile unter „Gegenstelle“ zeigt, ob der Socket passt.
+- Formular: Beschriftungen der Eingabefelder höchstens 40 Zeichen (Erklärung als `…Hint`-Label darunter),
+  Prüfstand misst das am fertigen Formular in Deutsch und Englisch.
+
 ## 0.7.4 (Build 20, 10.11.2026)
 
 - Behoben: Symcons Konsole meldet am Server Socket keine „inkompatible übergeordnete Instanz“ mehr. Das Gateway

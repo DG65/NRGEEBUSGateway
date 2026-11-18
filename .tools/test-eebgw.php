@@ -397,8 +397,24 @@ pruefe($fsock->status === 102 && (int)$fgw->buffers['Versuche'] === 2, 'Nach der
 $cp = json_decode($fgw->GetCompatibleParents(), true);
 $fgw->props['Richtung'] = 1;
 $cpServer = json_decode($fgw->GetCompatibleParents(), true);
-pruefe($cp === ['type' => 'require', 'moduleIDs' => ['{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}']]
-    && $cpServer['moduleIDs'] === ['{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}'], 'Konsole: passender Socket je Richtung (GetCompatibleParents)');
+pruefe($cp === ['type' => 'require', 'modules' => [['moduleID' => '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}',
+        'configuration' => ['UseSSL' => true, 'UseCertificate' => true, 'VerifyPeer' => true, 'VerifyHost' => false]]]]
+    && $cpServer['modules'][0]['moduleID'] === '{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}'
+    && $cpServer['modules'][0]['configuration'] === ['UseSSL' => false] && $cpServer['modules'][0]['initial'] === ['Port' => 4712],
+    'Konsole: passender Socket je Richtung mit fester Konfiguration (GetCompatibleParents)');
+$fgw->props['Richtung'] = 0;
+// Socket mit falscher SSL-Einstellung: Gateway stellt sie nicht selbst um, hält ihn geschlossen und meldet 206.
+$fsock->config['UseSSL'] = false;
+$fgw->ApplyChanges();
+pruefe($fsock->config['UseSSL'] === false && $fsock->config['Open'] === false && $fgw->status === 206,
+    'Falsche Socket-Einstellung: nicht überschrieben, Socket zu, Status 206');
+$fsock->config['UseSSL'] = true;
+$fgw->Takt();
+pruefe($fsock->config['Open'] === true && $fgw->status !== 206, 'Nach Berichtigung durch den Nutzer öffnet der Takt den Socket');
+$setzt = array_keys(array_diff_key($fsock->config, ['UseSSL' => 1]));
+sort($setzt);
+pruefe($setzt === ['Certificate', 'CertificateAuthority', 'Host', 'Open', 'Port', 'PrivateKey'],
+    'Gateway setzt am Client Socket nur Ziel, Zertifikate und Open');
 unset($GLOBALS['INST'][10051], $GLOBALS['INST'][10052]);
 
 // Gegenseite schließt, danach meldet Symcon den Socket als weg: nur die erste Meldung zählt.
@@ -409,15 +425,12 @@ $cs->getrennt('client socket no longer active');
 $ev = (new ReflectionProperty($cs, 'events'));
 pruefe($ev->getValue($cs) === [] && $cs->phase === 'idle', 'Socket weg nach Schließen der Gegenseite: keine zweite Abbruchmeldung');
 
-// Ohne Elterninstanz: Client Socket selbst anlegen (RequireParent wirkt live nicht).
+// Ohne Elterninstanz: nichts selbst anlegen (Store-Review 0.7.4), Status 207.
 $ohne = new EEBUSGateway(10100);
 $ohne->Create();
 $ohne->ApplyChanges();
-pruefe($ohne->timers['Verbindung'] === 15000, 'Ohne Client Socket: Prüf-Timer 15 s gestartet');
-$ohne->VerbindungPruefen();
-$neuSock = $ohne->parentId ? $GLOBALS['INST'][$ohne->parentId] : null;
-pruefe($neuSock instanceof FakeSocket && strpos($neuSock->name, 'EEBUS-Gateway Client Socket') === 0 && $ohne->timers['Verbindung'] === 0, 'Client Socket angelegt, verbunden, benannt; Timer aus');
-unset($GLOBALS['INST'][10100], $GLOBALS['INST'][$ohne->parentId]);
+pruefe($ohne->parentId === 0 && !isset($ohne->timers['Verbindung']) && $ohne->status === 207, 'Ohne Socket: nichts angelegt, Status 207');
+unset($GLOBALS['INST'][10100]);
 
 $wz = new ReflectionMethod(EEBUSGateway::class, 'wartezeit');
 pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [5, 10, 40, 300], 'Wiederverbindung: Wartezeit 5/10/40 s, höchstens 5 min');
@@ -612,6 +625,26 @@ $deutschGeblieben = array_values(array_filter($texteEn, function ($t) {
     return preg_match('/[äöüÄÖÜß]|\b(der|die|das|und|nicht|Gegenstelle|Verbindung|Fehler|Zustand)\b/u', str_replace(['§ 14a EnWG', 'SteuerboxHub (Test)'], '', $t)) === 1;
 }));
 pruefe($deutschGeblieben === [], 'Formular englisch: kein deutscher Text' . ($deutschGeblieben ? ' – ' . implode(' | ', $deutschGeblieben) : ''));
+// SUITE.md: Beschriftung von Eingabefeldern höchstens 40 Zeichen, am fertigen Formular in beiden Sprachen.
+$feldTypen = ['ValidationTextBox', 'NumberSpinner', 'Select', 'CheckBox', 'PasswordTextBox', 'SelectVariable', 'SelectInstance', 'IntervalBox', 'HorizontalSlider'];
+$zuLang = [];
+foreach (['de', 'en'] as $sprache) {
+    $GLOBALS['LANG'] = $sprache;
+    $sammle = function ($x) use (&$sammle, &$zuLang, $feldTypen, $sprache) {
+        if (!is_array($x)) {
+            return;
+        }
+        if (in_array($x['type'] ?? '', $feldTypen, true) && is_string($x['caption'] ?? null) && mb_strlen($x['caption']) > 40) {
+            $zuLang[] = $sprache . ': ' . $x['caption'] . ' (' . mb_strlen($x['caption']) . ')';
+        }
+        foreach ($x as $v) {
+            $sammle($v);
+        }
+    };
+    $sammle(formular($gw));
+}
+$GLOBALS['LANG'] = 'en';
+pruefe($zuLang === [], 'Eingabefelder: Beschriftung höchstens 40 Zeichen (DE+EN)' . ($zuLang ? ' – ' . implode(' | ', $zuLang) : ''));
 if (getenv('EEBGW_FORM_EN')) {
     echo implode("\n", array_map(function ($t) { return '      | ' . $t; }, $texteEn)), "\n";
 }
@@ -889,9 +922,10 @@ if ($ls !== false) {
     $sgw->parentId = 10501;
     $sgw->Create();
     $sgw->props['Richtung'] = 1;
-    $sgw->props['ServerPort'] = $port;
+    $ssock->config['Port'] = $port;   // stellt der Nutzer im Server Socket ein
+    $ssock->config['UseSSL'] = false; // gibt die Konsole vor (GetCompatibleParents)
     $sgw->ApplyChanges();
-    pruefe($ssock->config['Open'] === true && $ssock->config['Port'] === $port && $ssock->config['UseSSL'] === false, 'Server Socket eingestellt: offen, Port ' . $port . ', ohne SSL (TLS macht das Gateway)');
+    pruefe($ssock->config['Open'] === true && $ssock->config['Port'] === $port, 'Server Socket geöffnet, Port ' . $port . ' aus dem Socket');
     pruefe($sgw->status === 104 && strpos($sgw->vars['Zustand'] ?? '', '') !== false, 'Ohne vertrautes Gerät: Status 104 (warte auf Gerät)');
     neueAnfrage($sgw);
     $antwort = $sgw->AnkuendigungEintragen();

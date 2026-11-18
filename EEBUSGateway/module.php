@@ -34,6 +34,12 @@ class EEBUSGateway extends IPSModule
 
     private const CLIENT_SOCKET = '{3CFF0FD9-E306-41DB-9B5A-9D06D38576C3}';
     private const SERVER_SOCKET = '{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}';
+    // Feste Socket-Einstellungen, die die Konsole beim Anlegen vorgibt (GetCompatibleParents).
+    // Client Socket: TLS mit eigenem Zertifikat; Vertrauen über das gepinnte Zertifikat der Gegenstelle,
+    // SHIP-Zertifikate tragen keinen Hostnamen.
+    private const CLIENT_SOCKET_SOLL = ['UseSSL' => true, 'UseCertificate' => true, 'VerifyPeer' => true, 'VerifyHost' => false];
+    private const SERVER_SOCKET_SOLL = ['UseSSL' => false];
+    private const SERVER_PORT_VORSCHLAG = 4712;   // wie evcc
     // Server Socket: Datenpaket „Erweitert (Socket)“ mit ClientIP/ClientPort/Type (0 Daten, 1 verbunden,
     // 2 getrennt), wie im NRG-Stack ModbusServer.
     private const DATA_VOM_SERVER = '{7A1272A4-CBDB-46EF-BFC6-DCF4A53D2FC7}';
@@ -68,8 +74,6 @@ class EEBUSGateway extends IPSModule
         $this->RegisterPropertyBoolean('Aktiv', true);
         // Wer baut die Verbindung auf: 0 = das Gateway (Standard), 1 = das Gerät (Server-Rolle).
         $this->RegisterPropertyInteger('Richtung', self::RICHTUNG_CLIENT);
-        // Server-Rolle: Port, auf dem das Gateway Verbindungen annimmt (4712 wie evcc).
-        $this->RegisterPropertyInteger('ServerPort', 4712);
         // Formular: Aufbau (SUITE.md 3a): je Fachpanel Aufklapp-Zustand und Position.
         $this->RegisterPropertyString('FormLayout', '[]');
 
@@ -93,21 +97,25 @@ class EEBUSGateway extends IPSModule
         $this->registerFormAttributes();
 
         $this->RegisterTimer('Takt', 0, 'EEBGW_Takt($_IPS[\'TARGET\']);');
-        // RequireParent legt den Client Socket nicht zuverlässig an (live 27.10.2026, wie RoboHub 0.4.2):
-        // fehlt er nach 15 s noch, legt das Gateway ihn selbst an (VerbindungPruefen).
-        $this->RegisterTimer('Verbindung', 0, 'EEBGW_VerbindungPruefen($_IPS[\'TARGET\']);');
         $this->RegisterTimer('Pairing', 0, 'EEBGW_PairingSuchen($_IPS[\'TARGET\']);');
-        $this->RequireParent(self::CLIENT_SOCKET);
+        // Den Socket legt die Konsole an (GetCompatibleParents), nicht das Gateway (Store-Review 0.7.4).
     }
 
     /**
-     * Passende Elterninstanz für die Konsole (ab Symcon 8.2): je nach Verbindungsrichtung Client oder Server Socket.
-     * Ohne diese Angabe meldete die Konsole am Server Socket „inkompatible übergeordnete Instanz“ (Forum 144877 #24),
-     * obwohl der Datenfluss passt.
+     * Passende Elterninstanz für die Konsole: je nach Verbindungsrichtung Client oder Server Socket, mit der
+     * festen Konfiguration, die das Gateway braucht (Store-Review 0.7.4: Parameter nur hierüber vorgeben).
+     * Zur Laufzeit setzt das Gateway am Client Socket nur Ziel, Zertifikate und „Open“ (elternKonfigurieren).
      */
     public function GetCompatibleParents()
     {
-        return (string)json_encode(['type' => 'require', 'moduleIDs' => [$this->serverRolle() ? self::SERVER_SOCKET : self::CLIENT_SOCKET]]);
+        if ($this->serverRolle()) {
+            // TLS macht das Gateway selbst (EEBGWTlsServer), der Server Socket reicht nur Bytes durch.
+            $modul = ['moduleID' => self::SERVER_SOCKET, 'configuration' => self::SERVER_SOCKET_SOLL,
+                'initial' => ['Port' => self::SERVER_PORT_VORSCHLAG]];
+        } else {
+            $modul = ['moduleID' => self::CLIENT_SOCKET, 'configuration' => self::CLIENT_SOCKET_SOLL];
+        }
+        return (string)json_encode(['type' => 'require', 'modules' => [$modul]]);
     }
 
     public function ApplyChanges()
@@ -122,9 +130,6 @@ class EEBUSGateway extends IPSModule
         $this->MaintainVariable('Zustand', $this->t('State'), VARIABLETYPE_STRING, '', 2, true);
 
         $this->zertifikatSicherstellen();
-        if ($this->elternID() === 0) {
-            $this->SetTimerInterval('Verbindung', 15000);
-        }
         $this->elternBeobachten();
         $this->elternKonfigurieren();
         $this->SetTimerInterval('Takt', $this->ReadPropertyBoolean('Aktiv') ? self::TAKT_MS : 0);
@@ -517,55 +522,62 @@ class EEBUSGateway extends IPSModule
     // Elterninstanz (Client Socket)
     // ------------------------------------------------------------------
 
-    /** Timer: fehlt der Client Socket noch, selbst anlegen und verbinden. */
-    public function VerbindungPruefen(): void
+    /** Passt der Socket (vorhanden, richtiger Typ, feste Einstellungen)? */
+    private function socketOk(): bool
     {
-        $this->SetTimerInterval('Verbindung', 0);
-        if ($this->elternID() !== 0) {
-            return;
+        return $this->elternID() !== 0 && $this->elternPasst() && $this->elternEinstellungPasst();
+    }
+
+    /** Zeile im Formular: welcher Socket hängt dran, und was ist zu tun, wenn er nicht passt. */
+    private function socketZeile(): string
+    {
+        $art = $this->serverRolle() ? $this->t('server socket') : $this->t('client socket');
+        $eltern = $this->elternID();
+        if ($eltern === 0) {
+            return '⛔ ' . $this->t('No socket attached. Please choose a %s as parent instance in the console.', $art);
         }
-        $server = $this->serverRolle();
-        $id = IPS_CreateInstance($server ? self::SERVER_SOCKET : self::CLIENT_SOCKET);
-        // Inzwischen doch verbunden (z. B. über die Konsole)? Dann den eigenen wieder entfernen.
-        if ($this->elternID() !== 0 || !IPS_ConnectInstance($this->InstanceID, $id)) {
-            IPS_DeleteInstance($id);
-            return;
+        if (!$this->elternPasst()) {
+            return '⛔ ' . $this->t('Socket #%s does not match the direction. Please choose a %s as parent instance in the console.', (string)$eltern, $art);
         }
-        if ($server) {
-            IPS_SetName($id, $this->t('EEBUS gateway server socket (%s)', IPS_GetName($this->InstanceID)));
-            $this->LogMessage($this->t('Server socket #%s created and connected.', (string)$id), KL_MESSAGE);
-        } else {
-            IPS_SetName($id, $this->t('EEBUS gateway client socket (%s)', IPS_GetName($this->InstanceID)));
-            $this->LogMessage($this->t('Client socket #%s created and connected.', (string)$id), KL_MESSAGE);
+        if (!$this->elternEinstellungPasst()) {
+            $soll = $this->serverRolle() ? $this->t('SSL off (the gateway does TLS itself)')
+                : $this->t('SSL on, use certificate on, verify peer on, verify host off');
+            return '⛔ ' . $this->t('Please set in socket #%s: %s.', (string)$eltern, $soll);
         }
-        IPS_ApplyChanges($this->InstanceID);
+        if ($this->serverRolle()) {
+            return '✅ ' . $this->t('Server socket #%s, port %s.', (string)$eltern, (string)$this->serverPort());
+        }
+        return '✅ ' . $this->t('Client socket #%s.', (string)$eltern);
     }
 
     /**
-     * EEBGW_SocketTauschen($id): string — nach einem Richtungswechsel den passenden Socket anlegen: den bisherigen
-     * trennen und, wenn ihn das Gateway selbst angelegt hat und nichts anderes daran hängt, löschen.
+     * Stimmen die festen Einstellungen des Sockets (CLIENT_SOCKET_SOLL bzw. SERVER_SOCKET_SOLL)? Das Gateway setzt
+     * sie nicht selbst (Store-Review 0.7.4), sondern zeigt die Abweichung im Status (206) und im Formular.
      */
-    public function SocketTauschen(): string
+    private function elternEinstellungPasst(): bool
     {
-        if ($this->elternPasst()) {
-            return '✅ ' . $this->t('The parent instance already matches the connection direction.');
+        $eltern = $this->elternID();
+        if ($eltern === 0 || !$this->elternPasst()) {
+            return true;
         }
-        $alt = $this->elternID();
-        $altName = IPS_GetName($alt);
-        IPS_DisconnectInstance($this->InstanceID);
-        $andere = array_filter(IPS_GetInstanceList(), function ($i) use ($alt) {
-            return $i !== $this->InstanceID && (int)(IPS_GetInstance($i)['ConnectionID'] ?? 0) === $alt;
-        });
-        $eigenerName = in_array($altName, [$this->t('EEBUS gateway client socket (%s)', IPS_GetName($this->InstanceID)),
-            $this->t('EEBUS gateway server socket (%s)', IPS_GetName($this->InstanceID))], true);
-        if ($andere === [] && $eigenerName) {
-            IPS_DeleteInstance($alt);
-            $hinweis = $this->t('The previous socket #%s was removed.', (string)$alt);
-        } else {
-            $hinweis = $this->t('The previous socket #%s was only disconnected; delete it yourself if it is no longer needed.', (string)$alt);
+        $ist = json_decode((string)IPS_GetConfiguration($eltern), true) ?: [];
+        foreach ($this->serverRolle() ? self::SERVER_SOCKET_SOLL : self::CLIENT_SOCKET_SOLL as $k => $v) {
+            if (array_key_exists($k, $ist) && $ist[$k] !== $v) {
+                return false;
+            }
         }
-        $this->VerbindungPruefen();
-        return '✅ ' . $this->t('Matching socket created and connected.') . "\n" . $hinweis;
+        return true;
+    }
+
+    /** Server-Rolle: Port, auf dem der Server Socket lauscht (0 = kein passender Socket). */
+    private function serverPort(): int
+    {
+        $eltern = $this->elternID();
+        if ($eltern === 0 || !$this->serverRolle() || !$this->elternPasst()) {
+            return 0;
+        }
+        $ist = json_decode((string)IPS_GetConfiguration($eltern), true) ?: [];
+        return (int)($ist['Port'] ?? 0);
     }
 
     /** Fehlertext in der Sprache der Konsole (EEBGWFehler trägt eine übersetzbare Vorlage). */
@@ -635,7 +647,11 @@ class EEBUSGateway extends IPSModule
         }
     }
 
-    /** Client Socket nach dem eigenen Stand einstellen (nur bei Abweichung, ohne Inhalte zu protokollieren). */
+    /**
+     * Socket zur Laufzeit nachführen. Laut Store-Review 0.7.4 nur, was sich im Betrieb ändert: Ziel (Host, Port),
+     * Zertifikate und „Open“ (erst öffnen, wenn die Gegenstelle geprüft ist). Alles andere gibt die Konsole über
+     * GetCompatibleParents vor. Nur bei Abweichung, ohne Inhalte zu protokollieren.
+     */
     private function elternKonfigurieren(): void
     {
         $eltern = $this->elternID();
@@ -643,36 +659,22 @@ class EEBUSGateway extends IPSModule
             return;
         }
         if ($this->serverRolle()) {
-            // TLS macht das Gateway selbst (EEBGWTlsServer), der Server Socket reicht nur Bytes durch.
-            $soll = ['Open' => $this->ReadPropertyBoolean('Aktiv'), 'Port' => (int)$this->ReadPropertyInteger('ServerPort'), 'UseSSL' => false];
-            $ist = json_decode((string)IPS_GetConfiguration($eltern), true) ?: [];
-            foreach ($soll as $k => $v) {
-                if (($ist[$k] ?? null) !== $v) {
-                    IPS_SetConfiguration($eltern, (string)json_encode($soll));
-                    IPS_ApplyChanges($eltern);
-                    return;
-                }
+            $soll = ['Open' => $this->ReadPropertyBoolean('Aktiv')];
+        } else {
+            $bereit = $this->ReadPropertyBoolean('Aktiv') && $this->zielHost() !== ''
+                && $this->zielPort() > 0 && $this->ReadAttributeString('GegenstelleZertifikat') !== ''
+                && $this->ReadAttributeString('Zertifikat') !== '' && $this->elternEinstellungPasst();
+            $soll = ['Open' => $bereit];
+            if ($bereit) {
+                $soll += [
+                    'Host' => $this->zielHost(),
+                    'Port' => $this->zielPort(),
+                    // Symcon erwartet die PEM-Dateien Base64-kodiert (im Prototyp live geprüft).
+                    'Certificate' => base64_encode($this->ReadAttributeString('Zertifikat')),
+                    'PrivateKey' => base64_encode($this->ReadAttributeString('Schluessel')),
+                    'CertificateAuthority' => base64_encode($this->ReadAttributeString('GegenstelleZertifikat')),
+                ];
             }
-            return;
-        }
-        $bereit = $this->ReadPropertyBoolean('Aktiv') && $this->zielHost() !== ''
-            && $this->zielPort() > 0 && $this->ReadAttributeString('GegenstelleZertifikat') !== ''
-            && $this->ReadAttributeString('Zertifikat') !== '';
-        $soll = ['Open' => $bereit];
-        if ($bereit) {
-            $soll += [
-                'Host' => $this->zielHost(),
-                'Port' => $this->zielPort(),
-                'UseSSL' => true,
-                'UseCertificate' => true,
-                // Symcon erwartet die PEM-Dateien Base64-kodiert (im Prototyp live geprüft).
-                'Certificate' => base64_encode($this->ReadAttributeString('Zertifikat')),
-                'PrivateKey' => base64_encode($this->ReadAttributeString('Schluessel')),
-                'CertificateAuthority' => base64_encode($this->ReadAttributeString('GegenstelleZertifikat')),
-                'VerifyPeer' => true,
-                // SHIP-Zertifikate tragen keinen Hostnamen; Vertrauen über das gepinnte Zertifikat.
-                'VerifyHost' => false,
-            ];
         }
         $ist = json_decode((string)IPS_GetConfiguration($eltern), true) ?: [];
         $abweichung = false;
@@ -889,6 +891,10 @@ class EEBUSGateway extends IPSModule
             $this->SetBuffer('Versuche', (string)$versuche);
             $this->SetBuffer('NaechsterVersuch', (string)(time() + self::wartezeit($versuche)));
             $this->NeuVerbinden();
+        } elseif (!$neuVerbinden) {
+            // Hat der Nutzer die Einstellungen des Sockets gerade berichtigt, öffnet das Gateway ihn jetzt
+            // (nur bei Abweichung, sonst ohne Wirkung).
+            $this->elternKonfigurieren();
         }
         $this->statusAktualisieren();
     }
@@ -1045,7 +1051,7 @@ class EEBUSGateway extends IPSModule
             'register=' . ($this->ReadAttributeString('GegenstelleSki') === '' ? 'true' : 'false'),
             'brand=NRG-Stack', 'model=EEBUSGateway', 'type=EnergyManagementSystem'];
         return ['Name' => $this->ankuendigungName(), 'RegType' => '_ship._tcp', 'Domain' => '', 'Host' => '',
-            'Port' => (int)$this->ReadPropertyInteger('ServerPort'),
+            'Port' => $this->serverPort(),
             'TXTRecords' => array_map(function ($v) {
                 return ['Value' => $v];
             }, $txt)];
@@ -1092,6 +1098,9 @@ class EEBUSGateway extends IPSModule
         $dnssd = $this->dnssdInstanz();
         if ($dnssd === 0) {
             return '⛔ ' . $this->t('No DNS-SD instance found in Symcon.');
+        }
+        if ($this->serverPort() <= 0) {
+            return '⛔ ' . $this->t('No server socket with a port attached yet.');
         }
         [$rest, $eigen] = $this->ankuendigungStand($dnssd);
         $neu = $this->ankuendigungEintrag();
@@ -1190,8 +1199,16 @@ class EEBUSGateway extends IPSModule
             $this->SetStatus(104);
             return;
         }
+        if ($this->elternID() === 0) {
+            $this->SetStatus(207);
+            return;
+        }
         if (!$this->elternPasst()) {
             $this->SetStatus(205);
+            return;
+        }
+        if (!$this->elternEinstellungPasst()) {
+            $this->SetStatus(206);
             return;
         }
         if ($this->serverRolle() && $this->ReadAttributeString('GegenstelleSki') === '') {
@@ -1410,6 +1427,8 @@ class EEBUSGateway extends IPSModule
             ['code' => 202, 'icon' => 'error', 'caption' => 'Remote device not connected for more than 5 minutes'],
             ['code' => 203, 'icon' => 'inactive', 'caption' => 'Waiting for this gateway to be trusted by the remote device'],
             ['code' => 205, 'icon' => 'error', 'caption' => 'The parent instance does not match the connection direction (client socket or server socket)'],
+            ['code' => 206, 'icon' => 'error', 'caption' => 'The settings of the socket do not match the gateway (SSL)'],
+            ['code' => 207, 'icon' => 'inactive', 'caption' => 'No socket attached as parent instance'],
         ];
         return $this->eebgwBuildForm($this->eebgwFachpanels(), [], $status);
     }
@@ -1439,15 +1458,15 @@ class EEBUSGateway extends IPSModule
                     ['caption' => 'The gateway connects to the device (control box, most devices)', 'value' => self::RICHTUNG_CLIENT],
                     ['caption' => 'The device connects to the gateway (e.g. Wolf Link)', 'value' => self::RICHTUNG_SERVER],
                 ]],
-                ['type' => 'Label', 'caption' => 'After changing the direction click “Apply”; the gateway then creates the matching socket (client or server socket) if none is attached.'],
-                ['type' => 'Button', 'caption' => 'Replace socket to match the direction', 'onClick' => 'echo EEBGW_SocketTauschen($id);', 'visible' => !$this->elternPasst(),
-                    'confirm' => 'This disconnects the current socket and creates a matching one (outside this module). Continue?'],
-                ['type' => 'ValidationTextBox', 'name' => 'Host', 'caption' => 'Address of the remote device (IP or host name)', 'width' => '420px', 'visible' => !$server],
-                ['type' => 'NumberSpinner', 'name' => 'Port', 'caption' => 'Port (e.g. 4712, see the device manual)', 'minimum' => 0, 'maximum' => 65535, 'width' => '420px', 'visible' => !$server],
-                ['type' => 'NumberSpinner', 'name' => 'ServerPort', 'caption' => 'Port on which the gateway accepts the connection', 'minimum' => 1, 'maximum' => 65535, 'width' => '420px', 'visible' => $server],
+                ['type' => 'Label', 'name' => 'RichtungHint', 'caption' => 'Parent instance: client socket or server socket'],
+                ['type' => 'Label', 'name' => 'SocketZeile', 'caption' => $this->socketZeile(), 'color' => $this->socketOk() ? -1 : 0xC0392B],
+                ['type' => 'ValidationTextBox', 'name' => 'Host', 'caption' => 'Address of the remote device', 'width' => '420px', 'visible' => !$server],
+                ['type' => 'Label', 'name' => 'HostHint', 'caption' => 'IP address or host name of the device.', 'visible' => !$server],
+                ['type' => 'NumberSpinner', 'name' => 'Port', 'caption' => 'Port of the remote device', 'minimum' => 0, 'maximum' => 65535, 'width' => '420px', 'visible' => !$server],
+                ['type' => 'Label', 'name' => 'PortHint', 'caption' => 'Often 4712; see the device manual, or use the network search.', 'visible' => !$server],
                 ['type' => 'Label', 'caption' => 'The device finds the gateway via its announcement in the network (see “This gateway” below) and connects by itself. When it reports for the first time, its SKI appears here for confirmation.', 'visible' => $server],
-                ['type' => 'ValidationTextBox', 'name' => 'ErwarteterSki', 'caption' => 'SKI of the remote device (optional, from app or type plate)', 'width' => '420px'],
-                ['type' => 'Label', 'caption' => 'If an SKI is entered, the gateway accepts only this exact device. Leave it empty to compare the SKI yourself after the check.'],
+                ['type' => 'ValidationTextBox', 'name' => 'ErwarteterSki', 'caption' => 'SKI of the remote device (optional)', 'width' => '420px'],
+                ['type' => 'Label', 'name' => 'ErwarteterSkiHint', 'caption' => 'If an SKI is entered, the gateway accepts only this exact device. Leave it empty to compare the SKI yourself after the check.'],
                 ['type' => 'Button', 'caption' => 'Check remote device', 'onClick' => 'echo EEBGW_GegenstellePruefen($id);', 'visible' => !$server],
                 ['type' => 'Label', 'name' => 'GegenstelleZeile', 'caption' => $gegenZeile, 'color' => $gegenSki !== '' ? 0x2E8B3D : -1],
                 [
@@ -1488,8 +1507,8 @@ class EEBUSGateway extends IPSModule
             'type' => 'ExpansionPanel', 'bereich' => 'actions',
             'expanded' => ($gegenSki !== '' && ($st['phase'] ?? '') !== 'data') || !empty($pairingStand['aktiv']), 'caption' => '🪪  This gateway',
             'items' => [
-                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI of this gateway (trust it in the remote device)', 'value' => EEBGWCert::lesbar($eigenerSki), 'width' => '520px'],
-                ['type' => 'Label', 'caption' => 'Enter or confirm this SKI in the remote device (app, web interface or with the grid operator, depending on the device).'],
+                ['type' => 'ValidationTextBox', 'name' => 'EigenerSkiFeld', 'caption' => 'SKI of this gateway', 'value' => EEBGWCert::lesbar($eigenerSki), 'width' => '520px'],
+                ['type' => 'Label', 'name' => 'EigenerSkiFeldHint', 'caption' => 'Enter or confirm this SKI in the remote device (app, web interface or with the grid operator, depending on the device).'],
                 [
                     'type' => 'ExpansionPanel', 'expanded' => !empty($pairingStand['aktiv']), 'visible' => !$server, 'caption' => '🔗  Pairing via the metering point operator (SHIP Pairing Service)',
                     'items' => [

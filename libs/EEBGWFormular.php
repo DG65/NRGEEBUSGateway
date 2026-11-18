@@ -55,6 +55,10 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.8.0' => [
+            '• The gateway no longer creates or replaces its socket itself (Symcon store review). When creating the gateway, the console offers the matching client or server socket with the required settings; after changing the direction choose the matching socket as parent instance in the console.',
+            '• Under “Remote device” a line shows whether the socket matches. In the server role the port is now set in the server socket (default 4712).',
+        ],
         '0.7.4' => [
             '• Fix: the Symcon console no longer reports an “incompatible parent instance” when the gateway is attached to a server socket. The gateway now tells the console which socket matches the connection direction.',
         ],

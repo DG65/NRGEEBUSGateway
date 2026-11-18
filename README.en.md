@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHP%20module-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Module version](https://img.shields.io/badge/Module%20version-0.7.4-blue.svg)](library.json)
+[![Module version](https://img.shields.io/badge/Module%20version-0.8.0-blue.svg)](library.json)
 [![Symcon version](https://img.shields.io/badge/Symcon%20version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Donate-blue.svg)](https://paypal.me/DietmarGureth)
@@ -16,13 +16,14 @@ happens with the values is decided by application modules attached as child inst
 **NRG-Stack WPEEBUSHub** for heat pumps and **NRG-Stack ChargerEEBUSHub** for wallboxes (the gateway
 acts as energy management for both). One gateway per device.
 
-> Version 0.7.4: tested against the simulators from
+> Version 0.8.0: tested against the simulators from
 > [eebus-go](https://github.com/enbility/eebus-go) (control box `controlbox`, consumer `evse` with
 > measurements) and on a real Vaillant heat pump (energy management role).
 
 ## Setup
 
-1. Create an instance "NRG-Stack EEBUS-Gateway" (the client socket is created along with it).
+1. Create an instance "NRG-Stack EEBUS-Gateway". The console offers a client socket with the required
+   settings (SSL, own certificate); accept it. The gateway enters target and certificates itself.
 2. Start the search under "Search the network" and click your device - address, port and SKI are
    entered. Without an announcement in the network enter address and port manually. Then click "Apply".
 3. **Check remote device**: the gateway fetches the remote certificate and shows its SKI. If it
@@ -38,8 +39,9 @@ Some devices only open the connection themselves and accept none. This direction
 Vaillant connects to the gateway, it runs stable (beta test 10.11.2026). One gateway per device; with several
 gateways, each needs its own port. Then:
 
-1. Under “Remote device” choose **“The device connects to the gateway”**, check the port (default
-   4712), “Apply”. The gateway creates a server socket.
+1. Under “Remote device” choose **“The device connects to the gateway”**, “Apply”. Then choose a
+   **server socket** as parent instance in the console (without SSL, the gateway does TLS itself) and set
+   its port there (suggested 4712). The line under “Remote device” shows whether the socket matches.
 2. At the bottom under “This gateway” click **“Announce in the network”** (adds `_ship._tcp` to the
    DNS-SD instance of Symcon).
 3. In the app of the device, search for EEBUS devices and trust the gateway.

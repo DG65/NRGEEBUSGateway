@@ -1,7 +1,7 @@
 # NRG-Stack EEBUSGateway
 
 [![Symcon](https://img.shields.io/badge/Symcon-PHPModul-red.svg)](https://www.symcon.de/service/dokumentation/entwicklerbereich/sdk-tools/sdk-php/)
-[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.7.4-blue.svg)](library.json)
+[![Modul Version](https://img.shields.io/badge/Modul%20Version-0.8.0-blue.svg)](library.json)
 [![Symcon Version](https://img.shields.io/badge/Symcon%20Version-9.0%2B-green.svg)](https://www.symcon.de)
 [![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-lightgrey.svg)](LICENSE)
 [![PayPal](https://img.shields.io/badge/PayPal-Spenden-blue.svg)](https://paypal.me/DietmarGureth)
@@ -15,13 +15,14 @@ Kind-Instanzen am Gateway hängen: **NRG-Stack SteuerboxHub** (Steuerbox nach §
 dort das gesteuerte Gerät) und **NRG-Stack WPEEBUSHub** (Wärmepumpe) und **NRG-Stack ChargerEEBUSHub** (Wallbox) - bei
 diesen beiden ist das Gateway das Energiemanagement. Je Gerät ein eigenes Gateway.
 
-> Stand 0.7.4: geprüft gegen die Simulatoren aus
+> Stand 0.8.0: geprüft gegen die Simulatoren aus
 > [eebus-go](https://github.com/enbility/eebus-go) (Steuerbox `controlbox`, Verbraucher `evse` mit
 > Messwerten) und an einer echten Vaillant-Wärmepumpe (Rolle Energiemanagement).
 
 ## Einrichtung
 
-1. Instanz „NRG-Stack EEBUS-Gateway“ anlegen (der Client Socket wird mit angelegt).
+1. Instanz „NRG-Stack EEBUS-Gateway“ anlegen. Die Konsole bietet dabei einen Client Socket mit den nötigen
+   Einstellungen an (SSL, eigenes Zertifikat); ihn übernehmen. Ziel und Zertifikate trägt das Gateway selbst ein.
 2. Unter „Netzwerk durchsuchen“ die Suche starten und das Gerät anklicken - Adresse, Port und SKI werden
    eingetragen. Ohne Ankündigung im Netzwerk Adresse und Port von Hand eintragen. Dann „Übernehmen“.
 3. **Gegenstelle prüfen**: Das Gateway holt das Zertifikat der Gegenstelle und zeigt ihren SKI.
@@ -37,8 +38,9 @@ diese Richtung die Empfehlung: Verbindet sich das Gateway zur Vaillant, trennt s
 verbindet sich die Vaillant zum Gateway, läuft sie stabil (Beta-Test 10.11.2026). Je Gerät ein Gateway, bei
 mehreren Gateways jedes mit eigenem Port. Dann:
 
-1. Unter „Gegenstelle“ **„Das Gerät verbindet sich zum Gateway“** wählen, Port (Standard 4712)
-   prüfen, „Übernehmen“. Das Gateway legt einen Server Socket an.
+1. Unter „Gegenstelle“ **„Das Gerät verbindet sich zum Gateway“** wählen, „Übernehmen“. Dann in der Konsole
+   einen **Server Socket** als übergeordnete Instanz wählen (ohne SSL, das TLS macht das Gateway selbst) und dort
+   den Port einstellen (Vorschlag 4712). Die Zeile unter „Gegenstelle“ zeigt, ob der Socket passt.
 2. Unten unter „Dieses Gateway“ **„Im Netzwerk ankündigen“** (trägt `_ship._tcp` in die DNS-SD-Instanz
    von Symcon ein).
 3. In der App des Geräts nach EEBUS-Geräten suchen und dem Gateway vertrauen.
