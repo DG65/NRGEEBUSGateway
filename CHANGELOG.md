@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3 (Build 24, 19.11.2026)
+
+- Server-Richtung: Nach dem Neuladen (Modul-Update) fehlen die Zwischenspeicher `ServerClient` und `Tls`; das nächste
+  Paket des Geräts auf der alten Verbindung galt als neue Verbindung, und der frische TLS-Server meldete als Warnung
+  „unexpected record type 23 in phase hello“ (Slummi, Forum 144877 #33). Ist das erste Paket einer neuen Verbindung
+  verschlüsselte Anwendungsdaten (Record-Typ 23), trennt das Gateway jetzt still (nur Debug), das Gerät verbindet neu.
+
 ## 0.8.2 (Build 23, 19.11.2026)
 
 - Client-Richtung: Nach einem Verbindungsende wartet das Gateway 15 s bis zum ersten Neuverbinden (bisher sofort

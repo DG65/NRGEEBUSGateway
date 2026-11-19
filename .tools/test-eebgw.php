@@ -453,6 +453,25 @@ $vgw0->ApplyChanges();
 pruefe($vgw0->anKinder === [], 'Kein zweites „disconnected“ beim nächsten Übernehmen');
 unset($GLOBALS['INST'][10110], $GLOBALS['INST'][10111]);
 
+// Server-Richtung nach dem Neuladen: Das Gerät schickt auf der alten Verbindung weiter verschlüsselte Daten
+// (Record-Typ 23, Forum 144877 #33). Still trennen, keine TLS-Warnung.
+$rsock = new FakeSocket(10121);
+$rsock->modul = '{8062CF2B-600E-41D6-AD4B-1BA66C32D6ED}';
+$rsock->config['UseSSL'] = false;
+$rsock->config['Port'] = 4712;
+$rgw = new EEBUSGateway(10120);
+$rgw->parentId = 10121;
+$rgw->Create();
+$rgw->props['Richtung'] = 1;
+$rgw->ApplyChanges();
+$rgw->log = [];
+$rgw->ReceiveData(json_encode(['DataID' => '{7A1272A4-CBDB-46EF-BFC6-DCF4A53D2FC7}', 'Buffer' => mb_convert_encoding("\x17\x03\x03\x00\x05abcde", 'UTF-8', 'ISO-8859-1'),
+    'ClientIP' => '192.0.2.9', 'ClientPort' => 50000, 'Type' => 0]));
+$tlsWarnung = array_filter(array_map('json_encode', $rgw->log), function ($l) { return stripos($l, 'TLS') !== false; });
+pruefe($tlsWarnung === [] && ($rgw->buffers['ServerClient'] ?? '') === '' && ($rgw->buffers['Tls'] ?? '') === '',
+    'Server: Daten einer Verbindung von vor dem Neuladen werden still getrennt (keine TLS-Warnung)');
+unset($GLOBALS['INST'][10120], $GLOBALS['INST'][10121]);
+
 $wz = new ReflectionMethod(EEBUSGateway::class, 'wartezeit');
 pruefe([$wz->invoke(null, 1), $wz->invoke(null, 2), $wz->invoke(null, 4), $wz->invoke(null, 20)] === [15, 30, 120, 300], 'Wiederverbindung: Wartezeit 15/30/120 s, höchstens 5 min');
 

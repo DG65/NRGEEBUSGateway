@@ -1004,6 +1004,14 @@ class EEBUSGateway extends IPSModule
                 $t->zertifikat = $this->ReadAttributeString('Zertifikat');
                 $t->schluessel = $this->ReadAttributeString('Schluessel');
                 $this->tls = $t;
+                if ($typ === 0 && $bytes !== '' && ord($bytes[0]) === 23) {
+                    // Verschlüsselte Daten ohne TLS-Aufbau: Rest einer Verbindung von vor dem Neuladen (Zwischenspeicher
+                    // leer, Forum 144877 #33). Kein Fehler: still trennen, das Gerät verbindet sich neu.
+                    $this->SendDebug('Server', 'data from a connection before the reload (' . $ip . ':' . $port . '), closing it', 0);
+                    $this->tls = null;
+                    $this->serverTrennen();
+                    return '';
+                }
                 $this->SendDebug('Server', 'connection from ' . $ip . ':' . $port, 0);
                 if ($typ === 1) {
                     return '';

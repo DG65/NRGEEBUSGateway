@@ -55,6 +55,9 @@ trait EEBGWFormular
             '• The gateway answers queries for its operating state (like evcc).',
             '• New debug channel “SPINE-Inhalt” with the complete EEBUS messages for remote diagnosis of real devices.',
         ],
+        '0.8.3' => [
+            '• When the device connects to the gateway: after an update of the gateway, the warning “TLS connection … failed: unexpected record type 23” no longer appears. The gateway now quietly closes the device’s connection from before the update; the device then connects again.',
+        ],
         '0.8.2' => [
             '• When the gateway connects to the device, it now waits 15 seconds after a disconnect before reconnecting, and then 15, 30, 60 … seconds up to 5 minutes between attempts (Vaillant recommends at least 15 seconds).',
         ],
